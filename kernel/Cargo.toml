@@ -1,0 +1,11 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2024"
+authors = ["Firas Alkhatib <firas88alkhatib@gmail.com>"]
+
+[dependencies]
+bootloader_api = "0.11.17"
+spin = "0.12.2"
+uart_16550 = "0.6.0"
+x86_64 = "0.15.5"
