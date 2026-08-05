@@ -1,7 +1,6 @@
 use core::sync::atomic::{AtomicU64, Ordering};
-pub (crate) mod physical;
 pub(crate) mod frame_allocator;
-
+pub(crate) mod physical;
 
 static PHYSICAL_MEMORY_OFFSET: AtomicU64 = AtomicU64::new(0);
 

@@ -11,6 +11,35 @@ pub struct Madt {
     pub local_apic_address: u32,
     pub flags: u32,
 }
+impl Madt {
+    pub fn entries(&self, madt_address: u64) -> MadtEntryIterator {
+        let entries_start = unsafe { phys_to_virt::<u8>(madt_address).add(size_of::<Madt>()) };
+        let entries_end = unsafe { phys_to_virt::<u8>(madt_address).add(self.header.length as usize) };
+        MadtEntryIterator {
+            current: entries_start,
+            end: entries_end,
+        }
+    }
+}
+
+pub struct MadtEntryIterator {
+    current: *const u8,
+    end: *const u8,
+}
+
+impl Iterator for MadtEntryIterator {
+    type Item = (MadtEntryHeader, *const u8);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current >= self.end {
+            return None;
+        }
+        let header = unsafe { self.current.cast::<MadtEntryHeader>().read_unaligned() };
+        let data_ptr = self.current;
+        self.current = unsafe { self.current.add(header.length as usize) };
+        Some((header, data_ptr))
+    }
+}
 
 pub mod madt_entry_type {
     pub const PROCESSOR_LOCAL_APIC: u8 = 0;
@@ -52,6 +81,17 @@ pub struct MadtProcessorLocalApic {
     pub acpi_processor_uid: u8,
     pub apic_id: u8,
     pub flags: u32,
+}
+impl MadtProcessorLocalApic {
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.flags & 1 != 0
+    }
+    pub(crate) fn is_online_capable(&self) -> bool {
+        self.flags & 2 != 0
+    }
+    pub(crate) fn is_usable(&self) -> bool {
+        self.is_enabled() || self.is_online_capable()
+    }
 }
 
 #[repr(C, packed)]
@@ -100,7 +140,17 @@ pub struct MadtProcessorLocalX2Apic {
     pub flags: u32,
     pub acpi_processor_uid: u32,
 }
-
+impl MadtProcessorLocalX2Apic {
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.flags & 1 != 0
+    }
+    pub(crate) fn is_online_capable(&self) -> bool {
+        self.flags & 2 != 0
+    }
+    pub(crate) fn is_usable(&self) -> bool {
+        self.is_enabled() || self.is_online_capable()
+    }
+}
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MADT {
     lapic_addr: u64,
@@ -112,15 +162,7 @@ impl MADT {
 
         let mut lapic_addr = madt.local_apic_address as u64;
 
-        let entries_start = unsafe { phys_to_virt::<u8>(madt_address).add(size_of::<Madt>()) };
-        let entries_end = unsafe { phys_to_virt::<u8>(madt_address).add(madt.header.length as usize) };
-
-        let mut entry_address = entries_start;
-
-        while entry_address < entries_end {
-            // entries_start and entries_end are both in virtual address, no need to convert them to physical address
-            let header = unsafe { entry_address.cast::<MadtEntryHeader>().read_unaligned() };
-
+        for (header, entry_address) in madt.entries(madt_address) {
             match header.entry_type {
                 madt_entry_type::PROCESSOR_LOCAL_APIC => {
                     let lapic = unsafe { entry_address.cast::<MadtProcessorLocalApic>().read_unaligned() };
@@ -149,10 +191,28 @@ impl MADT {
                 }
                 _ => {}
             }
-
-            entry_address = unsafe { entry_address.add(header.length as usize) };
         }
 
         Ok(Self { lapic_addr })
     }
+}
+
+pub fn get_usable_cpus_count(madt_address: u64) -> usize {
+    let mut cpus_count: usize = 0;
+    let madt = phys_to_virt_unaligned::<Madt>(madt_address);
+
+    for (header, entry_address) in madt.entries(madt_address) {
+        match header.entry_type {
+            madt_entry_type::PROCESSOR_LOCAL_APIC => {
+                cpus_count += unsafe { entry_address.cast::<MadtProcessorLocalApic>().read_unaligned() }.is_usable() as usize;
+            }
+
+            madt_entry_type::PROCESSOR_LOCAL_X2APIC => {
+                cpus_count += unsafe { entry_address.cast::<MadtProcessorLocalX2Apic>().read_unaligned() }.is_usable() as usize;
+            }
+            _ => {}
+        }
+    }
+
+    cpus_count
 }
