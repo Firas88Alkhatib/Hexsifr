@@ -1,5 +1,5 @@
 max_width = 140
-single_line_if_else_max_width = 1240
+single_line_if_else_max_width = 140
 single_line_if = true
 control_brace_style = "AlwaysSameLine"
 use_small_heuristics = "Max"
