@@ -15,10 +15,7 @@ impl Madt {
     pub fn entries(&self, madt_address: u64) -> MadtEntryIterator {
         let entries_start = unsafe { phys_to_virt::<u8>(madt_address).add(size_of::<Madt>()) };
         let entries_end = unsafe { phys_to_virt::<u8>(madt_address).add(self.header.length as usize) };
-        MadtEntryIterator {
-            current: entries_start,
-            end: entries_end,
-        }
+        MadtEntryIterator { current: entries_start, end: entries_end }
     }
 }
 
@@ -214,5 +211,8 @@ pub fn get_usable_cpus_count(madt_address: u64) -> usize {
         }
     }
 
+    if cpus_count < 1 {
+        panic!("Invalid cpus count: {}", cpus_count)
+    }
     cpus_count
 }

@@ -1,12 +1,15 @@
-use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
+use bootloader_api::info::MemoryRegions;
 use core::slice::from_raw_parts_mut;
-use llfree::{Alloc, Class, Classing, FrameId, Init, LLFree, MetaData, MetaSize, Request, util::align_up};
+use llfree::{Alloc, Class, Classing, FrameId, Init, LLFree, MetaData, MetaSize, Request};
 use x86_64::{
-    PhysAddr,
+    PhysAddr, align_down, align_up,
     structures::paging::{FrameAllocator, FrameDeallocator, PageSize, PhysFrame, Size2MiB, Size4KiB},
 };
 
-use crate::memory::{phys_to_virt, physical::reserve_memory};
+use crate::{
+    arch::current_cpu_id,
+    memory::{MemoryRegionsExt, phys_to_virt, physical::reserve_memory},
+};
 
 pub trait PageSizeOrder: PageSize {
     const ORDER: usize;
@@ -54,7 +57,7 @@ impl<'a> FrameDeallocator<Size2MiB> for LLFreeFrameAllocator<'a> {
 
 impl LLFreeFrameAllocator<'_> {
     pub fn new(memory_regions: &mut MemoryRegions, num_cpus: usize) -> Result<Self, &'static str> {
-        let (base_addr, end_addr) = get_regions_boudary(memory_regions);
+        let (base_addr, end_addr) = memory_regions.usable_regions_boudry();
 
         let total_frames = frame_num::<Size4KiB>(end_addr, base_addr);
 
@@ -65,12 +68,11 @@ impl LLFreeFrameAllocator<'_> {
 
         let alloc = LLFree::new(total_frames, Init::AllocAll, &classing, meta_data).expect("Failed to create new LLFree");
 
-        for region in memory_regions.iter() {
-            if region.kind != MemoryRegionKind::Usable {
-                continue;
-            }
-            let start_frame = frame_num::<Size4KiB>(region.start, base_addr);
-            let end_frame = frame_num::<Size4KiB>(region.end, base_addr);
+        for region in memory_regions.usable_regions() {
+            let start_aligned = align_up(region.start, Size4KiB::SIZE);
+            let end_aligned = align_down(region.end, Size4KiB::SIZE);
+            let start_frame = frame_num::<Size4KiB>(start_aligned, base_addr);
+            let end_frame = frame_num::<Size4KiB>(end_aligned, base_addr);
             for frame in start_frame..end_frame {
                 // Request doesn't matter during init – use order=0, class=0, local=None
                 let req = Request { order: 0, class: Class(0), local: None };
@@ -101,8 +103,8 @@ impl LLFreeFrameAllocator<'_> {
 fn alloc_meta_data(memory_regions: &mut MemoryRegions, meta_sizes: MetaSize) -> MetaData<'static> {
     const ALIGN: usize = 64;
 
-    let trees_offset = align_up(meta_sizes.local, ALIGN);
-    let lower_offset = align_up(trees_offset + meta_sizes.trees, ALIGN);
+    let trees_offset = llfree::util::align_up(meta_sizes.local, ALIGN);
+    let lower_offset = llfree::util::align_up(trees_offset + meta_sizes.trees, ALIGN);
     let total_meta_bytes = lower_offset + meta_sizes.lower;
 
     let meta_phys = reserve_memory(memory_regions, total_meta_bytes).expect("Metadata reservation failed");
@@ -114,29 +116,8 @@ fn alloc_meta_data(memory_regions: &mut MemoryRegions, meta_sizes: MetaSize) -> 
     let lower_slice = unsafe { from_raw_parts_mut(base_virt.add(lower_offset), meta_sizes.lower) };
     MetaData { local: local_slice, trees: trees_slice, lower: lower_slice }
 }
-fn get_regions_boudary(memory_regions: &MemoryRegions) -> (u64, u64) {
-    let mut min_start = u64::MAX;
-    let mut max_end = 0u64;
-
-    for region in memory_regions.iter() {
-        if region.kind == MemoryRegionKind::Usable {
-            if region.start < min_start {
-                min_start = region.start;
-            }
-            if region.end > max_end {
-                max_end = region.end;
-            }
-        }
-    }
-    (min_start, max_end)
-}
 
 #[inline]
 fn frame_num<PS: PageSize>(addr: u64, base_addr: u64) -> usize {
     ((addr - base_addr) / PS::SIZE) as usize
-}
-
-fn current_cpu_id() -> usize {
-    // TODO: implement per‑CPU ID retrieval
-    0
 }

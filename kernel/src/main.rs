@@ -5,16 +5,11 @@
 
 use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping, entry_point};
 use core::panic::PanicInfo;
-use x86_64::structures::paging::{Size2MiB, Size4KiB};
-
-use crate::acpi::{
-    madt::{MADT, get_usable_cpus_count},
-    sdt::XSDTInfo,
-};
 
 #[macro_use]
 mod drivers;
 mod acpi;
+mod arch;
 mod memory;
 
 pub static BOOTLOADER_CONFIG: BootloaderConfig = {
@@ -30,37 +25,13 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
     info!("Booting Hexsifr kernel...");
 
     let physical_memory_offset = boot_info.physical_memory_offset.into_option().expect("Physical memory offset is not set");
-
     memory::set_physical_memory_offset(physical_memory_offset);
 
-    // https://wiki.osdev.org/RSDP
     let rsdp_addr = boot_info.rsdp_addr.into_option().expect("RSDP address is not set");
-    let xsdt_info = XSDTInfo::new(rsdp_addr);
-    let madt_addr = xsdt_info.expect("Failed to parse XSDT").madt.expect("MADT address not found");
-
-    let cpus_count = get_usable_cpus_count(madt_addr);
+    let cpus_count = crate::acpi::get_usable_cpu_count(rsdp_addr);
     info!("Detected {} usable CPUs ", cpus_count);
-    if cpus_count < 1 {
-        panic!("Invalid cpus count: {}", cpus_count)
-    }
 
-    info!("Initializing frame allocator");
-    let allocator = memory::frame_allocator::LLFreeFrameAllocator::new(&mut boot_info.memory_regions, cpus_count)
-        .expect("Cannot init frame allocator LLFree");
-
-    let allocated_phys_4kib = allocator.allocate::<Size4KiB>().unwrap();
-    let allocated_phys_2mib = allocator.allocate::<Size2MiB>().unwrap();
-    // let allocated_phys_1gib = allocator.allocate::<Size1GiB>().unwrap();
-    info!("allocated allocated_phys {:?}", allocated_phys_4kib);
-    info!("allocated allocated_phys_2mib {:?}", allocated_phys_2mib);
-    // info!("allocated allocated_phys_1gib {:?}", allocated_phys_1gib);
-
-    allocator.deallocate(allocated_phys_4kib);
-    allocator.deallocate(allocated_phys_2mib);
-    // allocator.deallocate(allocated_phys_1gib);
-
-    let madt = MADT::new(madt_addr).expect("Failed to parse MADT");
-    info!("Parsed MADT: {:?}", madt);
+    crate::memory::memory_init(&mut boot_info.memory_regions, cpus_count);
 
     info!("Init completed, entering main loop");
     loop {}

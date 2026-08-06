@@ -1,3 +1,5 @@
+use crate::acpi::{madt::get_usable_cpus_count, sdt::XSDTInfo};
+
 // https://wiki.osdev.org/ACPI
 pub(crate) mod dmar;
 pub(crate) mod fadt;
@@ -31,4 +33,12 @@ pub(crate) struct AcpiHeader {
     pub oem_revision: u32,
     pub creator_id: u32,
     pub creator_revision: u32,
+}
+
+pub(crate) fn get_usable_cpu_count(rsdp_addr: u64) -> usize {
+    // https://wiki.osdev.org/RSDP
+
+    let xsdt_info = XSDTInfo::new(rsdp_addr);
+    let madt_addr = xsdt_info.expect("Failed to parse XSDT").madt.expect("MADT address not found");
+    get_usable_cpus_count(madt_addr)
 }

@@ -1,8 +1,10 @@
-use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
+use bootloader_api::info::MemoryRegions;
 use x86_64::{
     align_up,
     structures::paging::{PageSize, Size4KiB},
 };
+
+use crate::memory::MemoryRegionsExt;
 
 /// Reserves a contiguous memory range from the beginning of the first usable
 /// memory region that can satisfy the requested size.
@@ -31,21 +33,14 @@ use x86_64::{
 pub fn reserve_memory(regions: &mut MemoryRegions, size: usize) -> Option<u64> {
     let size = align_up(size as u64, Size4KiB::SIZE);
 
-    for region in regions.iter_mut() {
-        if region.kind != MemoryRegionKind::Usable {
-            continue;
-        }
-
+    for region in regions.usable_regions_mut() {
         let start = align_up(region.start, Size4KiB::SIZE);
-
         let end = start + size;
-
         if end > region.end {
             continue;
         }
 
         region.start = end;
-
         return Some(start);
     }
 
