@@ -8,6 +8,7 @@ The project aims to explore operating system design from first principles, with 
 
 - Rust
 - QEMU
+- KVM enabled environment
 
 ### Run
 

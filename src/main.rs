@@ -15,7 +15,8 @@ fn main() {
 
     Command::new("qemu-system-x86_64")
         .args(["-machine", "q35"])
-        .args(["-cpu", "max"])
+        .args(["-accel", "kvm"])
+        .args(["-cpu", "max,x2apic=on"])
         .args(["-m", "4G"])
         .args(["-smp", "4"])
         .args(["-serial", "stdio"])
