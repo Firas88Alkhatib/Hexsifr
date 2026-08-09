@@ -24,6 +24,13 @@ macro_rules! info {
     };
 }
 
+macro_rules! error {
+    () => (s_print!("\n"));
+    ($($arg:tt)*) => {
+        s_println!("[ERROR] {}", format_args!($($arg)*));
+    };
+}
+
 pub fn init() {
     let port = unsafe { Uart16550Tty::new_port(COM1, Config::default()).expect("Failed to initialize COM1") };
     *SERIAL.lock() = Some(port);
