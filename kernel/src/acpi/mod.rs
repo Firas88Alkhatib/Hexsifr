@@ -1,4 +1,7 @@
-use crate::acpi::{madt::get_usable_cpus_count, sdt::XSDTInfo};
+use crate::{
+    acpi::{madt::madt_tables::Madt, sdt::XSDTInfo},
+    memory::phys_to_virt_unaligned,
+};
 
 // https://wiki.osdev.org/ACPI
 pub(crate) mod dmar;
@@ -35,10 +38,15 @@ pub(crate) struct AcpiHeader {
     pub creator_revision: u32,
 }
 
-pub(crate) fn get_usable_cpu_count(rsdp_addr: u64) -> usize {
-    // https://wiki.osdev.org/RSDP
+pub struct ACPIBootInfo {
+    pub usable_cpu_count: usize,
+    pub lapic_addresss: u64,
+}
 
-    let xsdt_info = XSDTInfo::new(rsdp_addr);
-    let madt_addr = xsdt_info.expect("Failed to parse XSDT").madt.expect("MADT address not found");
-    get_usable_cpus_count(madt_addr)
+pub(crate) fn get_acpi_boot_info(rsdp_addr: u64) -> ACPIBootInfo {
+    let xsdt_info = XSDTInfo::new(rsdp_addr).expect("Failed to parse XSDT");
+    let madt_address = xsdt_info.madt.expect("MADT address not found");
+    let madt = phys_to_virt_unaligned::<Madt>(madt_address);
+
+    ACPIBootInfo { usable_cpu_count: madt.usable_cpus(madt_address), lapic_addresss: madt.lapic_address(madt_address) }
 }
