@@ -1,15 +1,19 @@
 #![no_std]
 #![no_main]
-#![feature(custom_test_frameworks)]
+#![feature(custom_test_frameworks, abi_x86_interrupt)]
 #![test_runner(crate::test_runner)]
+
+extern crate alloc;
 
 use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping, entry_point};
 use core::panic::PanicInfo;
 
+use crate::cpu::halt_loop;
+
 #[macro_use]
 mod drivers;
 mod acpi;
-mod arch;
+mod cpu;
 mod memory;
 
 pub static BOOTLOADER_CONFIG: BootloaderConfig = {
@@ -28,25 +32,24 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
     memory::set_physical_memory_offset(physical_memory_offset);
 
     let rsdp_addr = boot_info.rsdp_addr.into_option().expect("RSDP address is not set");
-    let cpus_count = crate::acpi::get_usable_cpu_count(rsdp_addr);
-    info!("Detected {} usable CPUs ", cpus_count);
+    let acpi_info = acpi::get_acpi_boot_info(rsdp_addr);
+    info!("Detected {} usable CPUs ", acpi_info.usable_cpu_count);
 
-    crate::memory::memory_init(&mut boot_info.memory_regions, cpus_count);
+    cpu::lapic::init_lapic(acpi_info.lapic_addresss);
+
+    memory::memory_init(&mut boot_info.memory_regions, acpi_info.usable_cpu_count);
+
+    cpu::gdt::PerCpuGdt::new().load();
+    cpu::idt::init_idt();
 
     info!("Init completed, entering main loop");
-    loop {}
-}
-
-pub(crate) fn halt_forever() -> ! {
-    loop {
-        x86_64::instructions::hlt();
-    }
+    halt_loop();
 }
 
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
     s_println!("[PANIC] {}", info);
-    halt_forever();
+    halt_loop();
 }
 
 pub fn test_runner(tests: &[&dyn Fn()]) {
