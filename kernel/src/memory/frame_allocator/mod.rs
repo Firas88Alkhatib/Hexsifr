@@ -7,7 +7,7 @@ use x86_64::{
 };
 
 use crate::{
-    arch::current_cpu_id,
+    cpu::lapic::get_current_lapic_id,
     memory::{MemoryRegionsExt, phys_to_virt, physical::reserve_memory},
 };
 
@@ -85,8 +85,7 @@ impl LLFreeFrameAllocator<'_> {
     }
 
     pub fn allocate<PS: PageSizeOrder>(&self) -> Option<PhysFrame<PS>> {
-        let cpu = current_cpu_id();
-        let request = Request { order: PS::ORDER, class: PS::CLASS, local: Some(cpu) };
+        let request = Request { order: PS::ORDER, class: PS::CLASS, local: Some(current_cpu_id()) };
 
         let (frame, _) = self.inner.get(None, request).ok()?;
         let phys = self.base_addr + frame.0 as u64 * PS::SIZE;
@@ -120,4 +119,8 @@ fn alloc_meta_data(memory_regions: &mut MemoryRegions, meta_sizes: MetaSize) -> 
 #[inline]
 fn frame_num<PS: PageSize>(addr: u64, base_addr: u64) -> usize {
     ((addr - base_addr) / PS::SIZE) as usize
+}
+
+fn current_cpu_id() -> usize {
+    get_current_lapic_id() as usize
 }

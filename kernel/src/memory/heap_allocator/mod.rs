@@ -1,11 +1,10 @@
+use crate::cpu::lapic::get_current_lapic_id;
+use crate::memory::mapper::active_page_table_mapper;
+use crate::memory::physical_memory_offset;
 use buddy_slab_allocator::eii::{slab_pool_impl, virt_to_phys_impl};
 use buddy_slab_allocator::{GlobalAllocator, PerCpuSlab, SlabPoolTrait, StaticSlabPool};
 use x86_64::VirtAddr;
 use x86_64::structures::paging::{FrameAllocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB};
-
-use crate::arch::current_cpu_id;
-use crate::memory::mapper::active_page_table_mapper;
-use crate::memory::physical_memory_offset;
 
 const HEAP_SIZE: usize = 64 * 1024 * 1024; // 64 MiB
 const HEAP_VIRT_START: u64 = 0xffff_8800_4000_0000;
@@ -14,6 +13,10 @@ const NUM_PAGES: usize = HEAP_SIZE / PAGE_SIZE;
 
 #[global_allocator]
 static ALLOCATOR: GlobalAllocator = GlobalAllocator::new();
+
+fn current_cpu_id() -> usize {
+    get_current_lapic_id() as usize
+}
 
 const SLAB_POOLS: [PerCpuSlab<PAGE_SIZE>; 1] = [PerCpuSlab::new(0)];
 static SLAB_POOL: StaticSlabPool<PAGE_SIZE, 1> = StaticSlabPool::new(SLAB_POOLS, current_cpu_id);
