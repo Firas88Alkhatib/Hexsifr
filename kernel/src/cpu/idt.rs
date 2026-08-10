@@ -126,6 +126,8 @@ pub fn init_idt() {
         return idt;
     })
     .load();
+
+    x86_64::instructions::interrupts::enable();
 }
 
 extern "x86-interrupt" fn divide_error_handler(stack_frame: InterruptStackFrame) {
@@ -276,7 +278,6 @@ extern "x86-interrupt" fn security_exception_handler(stack_frame: InterruptStack
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // Acknowledge the interrupt first so the LAPIC can deliver the next one.
     lapic::eoi();
-    info!("Timer interrupt");
 }
 
 extern "x86-interrupt" fn apic_error_interrupt_handler(_stack_frame: InterruptStackFrame) {

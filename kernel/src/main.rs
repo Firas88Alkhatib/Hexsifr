@@ -8,13 +8,12 @@ extern crate alloc;
 use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping, entry_point};
 use core::panic::PanicInfo;
 
-use crate::cpu::halt_loop;
-
 #[macro_use]
 mod drivers;
 mod acpi;
 mod cpu;
 mod memory;
+mod time;
 
 pub static BOOTLOADER_CONFIG: BootloaderConfig = {
     let mut config = BootloaderConfig::new_default();
@@ -32,24 +31,30 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
     memory::set_physical_memory_offset(physical_memory_offset);
 
     let rsdp_addr = boot_info.rsdp_addr.into_option().expect("RSDP address is not set");
-    let acpi_info = acpi::get_acpi_boot_info(rsdp_addr);
-    info!("Detected {} usable CPUs ", acpi_info.usable_cpu_count);
+    let acpi_boot_info = acpi::get_acpi_boot_info(rsdp_addr);
+    info!("Detected {} usable CPUs ", acpi_boot_info.usable_cpu_count);
 
-    cpu::lapic::init_lapic(acpi_info.lapic_addresss);
+    cpu::lapic::init_lapic(acpi_boot_info.lapic_addresss);
 
-    memory::memory_init(&mut boot_info.memory_regions, acpi_info.usable_cpu_count);
+    memory::memory_init(&mut boot_info.memory_regions, acpi_boot_info.usable_cpu_count);
 
     cpu::gdt::PerCpuGdt::new().load();
     cpu::idt::init_idt();
 
+    let acpi = acpi::ACPI::new(rsdp_addr);
+    time::time_init(acpi.hpet);
+
+    time::sleep_ms(10_000);
+    info!("System uptime: {:?}", time::uptime_duration());
+
     info!("Init completed, entering main loop");
-    halt_loop();
+    crate::cpu::halt_loop()
 }
 
 #[panic_handler]
 pub fn panic(info: &PanicInfo) -> ! {
     s_println!("[PANIC] {}", info);
-    halt_loop();
+    crate::cpu::halt_loop()
 }
 
 pub fn test_runner(tests: &[&dyn Fn()]) {
