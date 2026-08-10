@@ -39,7 +39,7 @@ pub(crate) struct MADTInfo {
 }
 
 impl MADTInfo {
-    pub fn new(madt_address: u64) -> Result<Self, &'static str> {
+    pub fn new(madt_address: u64) -> Self {
         let madt = phys_to_virt_unaligned::<Madt>(madt_address);
 
         let mut result = Self {
@@ -101,6 +101,6 @@ impl MADTInfo {
             }
         }
 
-        Ok(result)
+        result
     }
 }

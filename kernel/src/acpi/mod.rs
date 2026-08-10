@@ -1,5 +1,9 @@
 use crate::{
-    acpi::{madt::madt_tables::Madt, sdt::XSDTInfo},
+    acpi::{
+        hpet::HPET,
+        madt::{MADTInfo, madt_tables::Madt},
+        sdt::XSDTInfo,
+    },
     memory::phys_to_virt_unaligned,
 };
 
@@ -38,6 +42,16 @@ pub(crate) struct AcpiHeader {
     pub creator_revision: u32,
 }
 
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
+pub struct AcpiGenericAddress {
+    pub address_space: u8,
+    pub bit_width: u8,
+    pub bit_offset: u8,
+    pub access_size: u8,
+    pub address: u64,
+}
+
 pub struct ACPIBootInfo {
     pub usable_cpu_count: usize,
     pub lapic_addresss: u64,
@@ -49,4 +63,19 @@ pub(crate) fn get_acpi_boot_info(rsdp_addr: u64) -> ACPIBootInfo {
     let madt = phys_to_virt_unaligned::<Madt>(madt_address);
 
     ACPIBootInfo { usable_cpu_count: madt.usable_cpus(madt_address), lapic_addresss: madt.lapic_address(madt_address) }
+}
+
+pub struct ACPI {
+    pub hpet: Option<HPET>,
+    pub madt: Option<MADTInfo>,
+}
+impl ACPI {
+    pub fn new(rsdp_addr: u64) -> Self {
+        let xsdt_info = XSDTInfo::new(rsdp_addr).expect("Failed to parse XSDT");
+
+        let hpet = xsdt_info.hpet.map(|addr| HPET::new(addr));
+        let madt = xsdt_info.madt.map(|addr| MADTInfo::new(addr));
+
+        Self { madt, hpet }
+    }
 }
