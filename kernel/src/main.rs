@@ -34,12 +34,10 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
     let acpi_boot_info = acpi::get_acpi_boot_info(rsdp_addr);
     info!("Detected {} usable CPUs ", acpi_boot_info.usable_cpu_count);
 
-    cpu::lapic::init_lapic(acpi_boot_info.lapic_addresss);
+    cpu::lapic::set_lapic_base_addr(acpi_boot_info.lapic_addresss);
+    cpu::init();
 
     memory::memory_init(&mut boot_info.memory_regions, acpi_boot_info.usable_cpu_count);
-    
-    cpu::gdt::PerCpuGdt::new().load();
-    cpu::idt::init_idt();
 
     let acpi = acpi::ACPI::new(rsdp_addr);
     time::time_init(acpi.hpet, acpi.fadt);

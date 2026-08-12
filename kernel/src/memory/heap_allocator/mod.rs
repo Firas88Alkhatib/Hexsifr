@@ -1,4 +1,4 @@
-use crate::cpu::lapic::get_current_lapic_id;
+use crate::cpu;
 use crate::memory::mapper::active_page_table_mapper;
 use crate::memory::physical_memory_offset;
 use buddy_slab_allocator::eii::{slab_pool_impl, virt_to_phys_impl};
@@ -15,7 +15,7 @@ const NUM_PAGES: usize = HEAP_SIZE / PAGE_SIZE;
 static ALLOCATOR: GlobalAllocator = GlobalAllocator::new();
 
 fn current_cpu_id() -> usize {
-    get_current_lapic_id() as usize
+    cpu::per_cpu::get_per_cpu_info().shared.id as usize
 }
 
 const SLAB_POOLS: [PerCpuSlab<PAGE_SIZE>; 1] = [PerCpuSlab::new(0)];

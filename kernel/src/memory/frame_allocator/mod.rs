@@ -7,7 +7,7 @@ use x86_64::{
 };
 
 use crate::{
-    cpu::lapic::get_current_lapic_id,
+    cpu,
     memory::{MemoryRegionsExt, phys_to_virt, physical::reserve_memory},
 };
 
@@ -122,5 +122,5 @@ fn frame_num<PS: PageSize>(addr: u64, base_addr: u64) -> usize {
 }
 
 fn current_cpu_id() -> usize {
-    get_current_lapic_id() as usize
+    cpu::per_cpu::get_per_cpu_info().shared.id as usize
 }

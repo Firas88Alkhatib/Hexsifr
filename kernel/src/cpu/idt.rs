@@ -6,11 +6,15 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
-use crate::cpu::{halt_loop, lapic::read_lapic_error_statu_register};
+use crate::cpu::{halt_loop, lapic::read_lapic_error_status_register, per_cpu::get_per_cpu_info};
 
 static IDT: Once<InterruptDescriptorTable> = Once::new();
 
-pub fn init_idt() {
+pub fn eoi() {
+    unsafe { get_per_cpu_info().local.lapic.end_of_interrupt() };
+}
+
+pub fn get_idt() -> &'static InterruptDescriptorTable {
     IDT.call_once(|| {
         let mut idt = InterruptDescriptorTable::new();
         // 0 = Divide Error
@@ -122,12 +126,8 @@ pub fn init_idt() {
         idt[lapic::APIC_ERROR_VECTOR].set_handler_fn(apic_error_interrupt_handler);
         // 255 sporious vector
         idt[lapic::SPURIOUS_VECTOR].set_handler_fn(spurious_interrupt_handler);
-
         return idt;
     })
-    .load();
-
-    x86_64::instructions::interrupts::enable();
 }
 
 extern "x86-interrupt" fn divide_error_handler(stack_frame: InterruptStackFrame) {
@@ -277,13 +277,13 @@ extern "x86-interrupt" fn security_exception_handler(stack_frame: InterruptStack
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // Acknowledge the interrupt first so the LAPIC can deliver the next one.
-    lapic::eoi();
+    eoi();
 }
 
 extern "x86-interrupt" fn apic_error_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    let esr = read_lapic_error_statu_register();
+    let esr = read_lapic_error_status_register();
     error!("APIC error: ESR = {:#x}", esr);
-    lapic::eoi();
+    eoi();
 }
 
 // A spurious interrupt is an interrupt that gets signaled even though no real
