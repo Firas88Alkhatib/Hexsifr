@@ -30,7 +30,8 @@ pub struct LocalApicNmi {
     pub local_apic_lint: u8,
 }
 #[derive(Debug, Clone)]
-pub(crate) struct MADTInfo {
+pub(crate) struct MADT {
+    pub table: MadtTable,
     pub lapic_addr: u64,
     pub cpus: Vec<CpuInfo>,
     pub io_apics: Vec<IoApicInfo>,
@@ -38,11 +39,12 @@ pub(crate) struct MADTInfo {
     pub nmi_sources: Vec<LocalApicNmi>,
 }
 
-impl MADTInfo {
+impl MADT {
     pub fn new(madt_address: u64) -> Self {
-        let madt = phys_to_virt_unaligned::<Madt>(madt_address);
+        let madt = phys_to_virt_unaligned::<MadtTable>(madt_address);
 
         let mut result = Self {
+            table: madt,
             lapic_addr: madt.local_apic_address as u64,
             cpus: Vec::new(),
             io_apics: Vec::new(),

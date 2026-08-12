@@ -37,15 +37,21 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
     cpu::lapic::init_lapic(acpi_boot_info.lapic_addresss);
 
     memory::memory_init(&mut boot_info.memory_regions, acpi_boot_info.usable_cpu_count);
-
+    
     cpu::gdt::PerCpuGdt::new().load();
     cpu::idt::init_idt();
 
     let acpi = acpi::ACPI::new(rsdp_addr);
-    time::time_init(acpi.hpet);
+    time::time_init(acpi.hpet, acpi.fadt);
 
+    info!("System uptime: {:?}", time::uptime_duration());
+    info!("System Date Time: {:?}", time::current_date_time());
+    info!("System Date Time in nanos: {:?}", time::current_time_ns());
+    info!("Sleeping for 10 seconds...");
     time::sleep_ms(10_000);
     info!("System uptime: {:?}", time::uptime_duration());
+    info!("System Date Time: {:?}", time::current_date_time());
+    info!("System Date Time in nanos: {:?}", time::current_time_ns());
 
     info!("Init completed, entering main loop");
     crate::cpu::halt_loop()

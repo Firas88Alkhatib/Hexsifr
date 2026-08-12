@@ -3,6 +3,8 @@ use core::{
     ptr::{read_volatile, write_volatile},
 };
 
+use x86_64::instructions::interrupts::without_interrupts;
+
 use crate::{
     acpi::{AcpiGenericAddress, AcpiHeader},
     memory::{phys_to_virt, phys_to_virt_unaligned},
@@ -27,6 +29,7 @@ pub struct HpetTable {
     pub page_protection: u8,
 }
 
+#[derive(Debug, Clone)]
 pub struct HPET {
     base_virt: *mut u8,
 }
@@ -77,26 +80,31 @@ impl HPET {
     //     self.write_register(HpetRegister::Config, config);
     // }
 
-    pub fn wait_ticks(&self, ticks: u64) {
-        let start = self.main_counter();
-        while self.main_counter() - start < ticks {
-            spin_loop();
-        }
-    }
-
     pub fn calibrate_tsc(&self) -> Option<u64> {
         let hpet_freq = self.frequency()?;
         if hpet_freq == 0 {
             return None;
         }
-        // Wait for a known duration: e.g., 10 ms.
-        let wait_ticks = hpet_freq / 100; // 10 ms
-        let tsc_start = unsafe { core::arch::x86_64::_rdtsc() };
-        self.wait_ticks(wait_ticks);
-        let tsc_end = unsafe { core::arch::x86_64::_rdtsc() };
-        let elapsed_tsc = tsc_end - tsc_start;
-        // TSC frequency = (TSC ticks * HPET frequency) / HPET ticks
-        let tsc_freq = (elapsed_tsc * hpet_freq) / wait_ticks;
-        Some(tsc_freq)
+        let target_ticks = hpet_freq / 20;
+
+        without_interrupts(|| {
+            let hpet_start = self.main_counter();
+            let tsc_start = unsafe { core::arch::x86_64::_rdtsc() };
+
+            let mut hpet_now = hpet_start;
+            while hpet_now.wrapping_sub(hpet_start) < target_ticks {
+                hpet_now = self.main_counter();
+                spin_loop();
+            }
+
+            let tsc_end = unsafe { core::arch::x86_64::_rdtsc() };
+            let elapsed_hpet = hpet_now.wrapping_sub(hpet_start);
+            let elapsed_tsc = tsc_end - tsc_start;
+
+            if elapsed_hpet == 0 {
+                return None;
+            }
+            Some((elapsed_tsc * hpet_freq) / elapsed_hpet)
+        })
     }
 }

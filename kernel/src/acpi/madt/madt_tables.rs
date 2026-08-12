@@ -92,21 +92,21 @@ pub struct MadtLocalApicAddressOverride {
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
-pub struct Madt {
+pub struct MadtTable {
     pub header: AcpiHeader,
     pub local_apic_address: u32,
     pub flags: u32,
 }
 
-impl Madt {
+impl MadtTable {
     pub fn entries(&self, madt_address: u64) -> MadtEntryIterator {
-        let entries_start = unsafe { phys_to_virt::<u8>(madt_address).add(size_of::<Madt>()) };
+        let entries_start = unsafe { phys_to_virt::<u8>(madt_address).add(size_of::<MadtTable>()) };
         let entries_end = unsafe { phys_to_virt::<u8>(madt_address).add(self.header.length as usize) };
         MadtEntryIterator { current: entries_start, end: entries_end }
     }
     pub fn usable_cpus(&self, madt_address: u64) -> usize {
         let mut cpus_count: usize = 0;
-        let madt = phys_to_virt_unaligned::<Madt>(madt_address);
+        let madt = phys_to_virt_unaligned::<MadtTable>(madt_address);
 
         for (header, entry_address) in madt.entries(madt_address) {
             match header.entry_type {
