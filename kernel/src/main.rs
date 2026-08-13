@@ -9,6 +9,8 @@ use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping, entry_point};
 use core::panic::PanicInfo;
 
 #[macro_use]
+mod debug;
+#[macro_use]
 mod drivers;
 mod acpi;
 mod cpu;
