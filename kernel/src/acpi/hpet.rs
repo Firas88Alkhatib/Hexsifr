@@ -8,6 +8,7 @@ use x86_64::instructions::interrupts::without_interrupts;
 use crate::{
     acpi::{AcpiGenericAddress, AcpiHeader},
     memory::{phys_to_virt, phys_to_virt_unaligned},
+    time::read_tsc_counter,
 };
 
 #[repr(usize)]
@@ -85,11 +86,11 @@ impl HPET {
         if hpet_freq == 0 {
             return None;
         }
-        let target_ticks = hpet_freq / 20;
+        let target_ticks = hpet_freq / 20; // 50 ms
 
         without_interrupts(|| {
             let hpet_start = self.main_counter();
-            let tsc_start = unsafe { core::arch::x86_64::_rdtsc() };
+            let tsc_start = read_tsc_counter();
 
             let mut hpet_now = hpet_start;
             while hpet_now.wrapping_sub(hpet_start) < target_ticks {
@@ -97,13 +98,13 @@ impl HPET {
                 spin_loop();
             }
 
-            let tsc_end = unsafe { core::arch::x86_64::_rdtsc() };
+            let tsc_end = read_tsc_counter();
             let elapsed_hpet = hpet_now.wrapping_sub(hpet_start);
-            let elapsed_tsc = tsc_end - tsc_start;
-
             if elapsed_hpet == 0 {
                 return None;
             }
+
+            let elapsed_tsc = tsc_end - tsc_start;
             Some((elapsed_tsc * hpet_freq) / elapsed_hpet)
         })
     }

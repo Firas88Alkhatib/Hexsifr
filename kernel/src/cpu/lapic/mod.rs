@@ -1,10 +1,10 @@
-use crate::{cpu::per_cpu::get_per_cpu_info, memory::phys_to_virt};
+use crate::memory::phys_to_virt;
 
 use core::ptr::read_volatile;
 use raw_cpuid::CpuId;
 
 use spin::Once;
-use x2apic::lapic::{LocalApic, LocalApicBuilder};
+use x2apic::lapic::{LocalApic, LocalApicBuilder, TimerDivide, TimerMode};
 use x86_64::registers::model_specific::Msr;
 
 // https://wiki.osdev.org/APIC
@@ -30,7 +30,9 @@ pub fn new_lapic() -> LocalApic {
         .error_vector(APIC_ERROR_VECTOR as usize)
         .spurious_vector(SPURIOUS_VECTOR as usize)
         .set_xapic_base(get_lapic_virt())
-        .timer_initial(1000_000_000)
+        .timer_initial(u32::MAX)
+        .timer_divide(TimerDivide::Div16)
+        .timer_mode(TimerMode::Periodic)
         .build()
         .expect("Failed to create LAPIC instance")
 }
