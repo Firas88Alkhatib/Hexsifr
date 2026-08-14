@@ -1,6 +1,7 @@
+use acpi_crate::sdt::fadt::Fadt;
 use x86_64::instructions::{interrupts::without_interrupts, port::Port};
 
-use crate::time::date_time::DateTime;
+use crate::{acpi::get_acpi, time::date_time::DateTime};
 
 const CMOS_ADDR: u16 = 0x70;
 const CMOS_DATA: u16 = 0x71;
@@ -27,7 +28,8 @@ fn is_update_in_progress() -> bool {
     (read_cmos(REG_STATUS_A) & 0x80) != 0
 }
 
-pub fn read_rtc(fadt_century_reg: Option<u8>) -> DateTime {
+pub fn read_rtc() -> DateTime {
+    let fadt_century_reg = get_acpi().find_table::<Fadt>().map(|f| f.century);
     let is_binary_mode = read_cmos(REG_STATUS_B) & 0x04 != 0;
     let read_value = |reg: u8| -> u8 {
         let value = read_cmos(reg);

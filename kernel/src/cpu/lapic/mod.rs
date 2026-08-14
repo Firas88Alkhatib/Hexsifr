@@ -1,5 +1,6 @@
-use crate::memory::phys_to_virt;
+use crate::{acpi::get_acpi, memory::phys_to_virt};
 
+use acpi_crate::sdt::madt::{Madt, MadtEntry};
 use core::ptr::read_volatile;
 use raw_cpuid::CpuId;
 
@@ -16,12 +17,20 @@ pub const TIMER_VECTOR: u8 = 32;
 pub const APIC_ERROR_VECTOR: u8 = 33;
 pub const SPURIOUS_VECTOR: u8 = 255;
 
-pub fn set_lapic_base_addr(lapic_phys_addr: u64) {
-    LAPIC_VIRT_ADDR.call_once(|| phys_to_virt::<u8>(lapic_phys_addr) as u64);
-}
-
 fn get_lapic_virt() -> u64 {
-    *LAPIC_VIRT_ADDR.get().expect("Lapic virtual address is not initialized")
+    *LAPIC_VIRT_ADDR.call_once(|| {
+        let binding = get_acpi().find_table::<Madt>().expect("Cannot read MADT table");
+        let madt = binding.get();
+
+        let lapic_phys_addr = madt
+            .entries()
+            .find_map(|e| match e {
+                MadtEntry::LocalApicAddressOverride(o) => Some(o.local_apic_address),
+                _ => None,
+            })
+            .unwrap_or(madt.local_apic_address as u64);
+        phys_to_virt::<u8>(lapic_phys_addr) as u64
+    })
 }
 
 pub fn new_lapic() -> LocalApic {

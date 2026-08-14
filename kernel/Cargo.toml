@@ -13,3 +13,5 @@ llfree = { git = "https://github.com/luhsra/llfree-rs.git" }
 buddy-slab-allocator = "0.4.7"
 raw-cpuid = "11.6.0"
 x2apic = "0.5.0"
+ap-startup = "0.3.0"
+acpi_crate = { package = "acpi", version = "6.1.1" }

@@ -33,25 +33,15 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
     memory::set_physical_memory_offset(physical_memory_offset);
 
     let rsdp_addr = boot_info.rsdp_addr.into_option().expect("RSDP address is not set");
-    let acpi_boot_info = acpi::get_acpi_boot_info(rsdp_addr);
-    info!("Detected {} usable CPUs ", acpi_boot_info.usable_cpu_count);
-
-    cpu::lapic::set_lapic_base_addr(acpi_boot_info.lapic_addresss);
-    cpu::init();
-
-    memory::memory_init(&mut boot_info.memory_regions, acpi_boot_info.usable_cpu_count);
-
-    let acpi = acpi::ACPI::new(rsdp_addr);
-    time::time_init(acpi.hpet, acpi.fadt);
+    acpi::acpi_init(rsdp_addr as usize);
+    cpu::cpu_init();
+    memory::memory_init(&mut boot_info.memory_regions);
+    time::time_init();
 
     info!("System uptime: {:?}", time::uptime_duration());
     info!("System Date Time: {:?}", time::current_date_time());
-    info!("System Date Time in nanos: {:?}", time::current_time_ns());
-    info!("Sleeping for 10 seconds...");
-    time::sleep_ms(10_000);
-    info!("System uptime: {:?}", time::uptime_duration());
-    info!("System Date Time: {:?}", time::current_date_time());
-    info!("System Date Time in nanos: {:?}", time::current_time_ns());
+
+    cpu::ap::start_ap_processors();
 
     info!("Init completed, entering main loop");
     crate::cpu::halt_loop()

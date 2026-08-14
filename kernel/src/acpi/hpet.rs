@@ -3,31 +3,16 @@ use core::{
     ptr::{read_volatile, write_volatile},
 };
 
+use acpi_crate::HpetInfo;
 use x86_64::instructions::interrupts::without_interrupts;
 
-use crate::{
-    acpi::{AcpiGenericAddress, AcpiHeader},
-    memory::{phys_to_virt, phys_to_virt_unaligned},
-    time::read_tsc_counter,
-};
+use crate::{acpi::get_acpi, memory::phys_to_virt, time::read_tsc_counter};
 
 #[repr(usize)]
 pub enum HpetRegister {
     Capabilities = 0x00,
     Config = 0x10,
     Counter = 0xF0,
-}
-#[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
-pub struct HpetTable {
-    pub header: AcpiHeader,
-    pub hardware_rev_id: u8,
-    pub comparator_count: u8,
-    pub pci_vendor_id: u16,
-    pub address: AcpiGenericAddress,
-    pub hpet_number: u8,
-    pub minimum_tick: u16,
-    pub page_protection: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -36,10 +21,11 @@ pub struct HPET {
 }
 
 impl HPET {
-    pub fn new(hpet_phys_addr: u64) -> Self {
-        let hpet_table = phys_to_virt_unaligned::<HpetTable>(hpet_phys_addr);
-        let base_virt = phys_to_virt::<u8>(hpet_table.address.address) as *mut u8;
-        Self { base_virt }
+    pub fn new() -> Result<Self, &'static str> {
+        let acpi = get_acpi();
+        let hpet_info = HpetInfo::new(acpi).map_err(|_| "Cannot create HPET info")?;
+        let base_virt = phys_to_virt::<u8>(hpet_info.base_address as u64) as *mut u8;
+        Ok(Self { base_virt })
     }
     fn read_register(&self, reg: HpetRegister) -> u64 {
         unsafe {

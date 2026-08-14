@@ -13,12 +13,12 @@ const PIT_CMD_PORT: u16 = 0x43;
 const PIT_CH0_DATA: u16 = 0x40;
 
 /// Try to measure the tsc frequency
-pub fn calibrate_tsc_frequency(hpet: Option<HPET>) -> Option<u64> {
+pub fn calibrate_tsc_frequency() -> Option<u64> {
     if let Some(tsc_frequency) = CpuId::new().get_tsc_info().and_then(|i| i.tsc_frequency()) {
         return Some(tsc_frequency);
     }
 
-    if let Some(hpet_freq) = hpet.and_then(|h| h.calibrate_tsc()) {
+    if let Some(hpet_freq) = HPET::new().ok().and_then(|h| h.calibrate_tsc()) {
         return Some(hpet_freq);
     }
 

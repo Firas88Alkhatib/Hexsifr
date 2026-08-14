@@ -1,15 +1,19 @@
 use bootloader_api::info::MemoryRegions;
 use core::slice::from_raw_parts_mut;
 use llfree::{Alloc, Class, Classing, FrameId, Init, LLFree, MetaData, MetaSize, Request};
+use spin::Mutex;
 use x86_64::{
     PhysAddr, align_down, align_up,
     structures::paging::{FrameAllocator, FrameDeallocator, PageSize, PhysFrame, Size2MiB, Size4KiB},
 };
 
 use crate::{
+    acpi::get_cpu_count,
     cpu,
     memory::{MemoryRegionsExt, phys_to_virt, physical::reserve_memory},
 };
+
+static FRAME_ALLOCATOR: Mutex<Option<LLFreeFrameAllocator>> = Mutex::new(None);
 
 pub trait PageSizeOrder: PageSize {
     const ORDER: usize;
@@ -123,4 +127,18 @@ fn frame_num<PS: PageSize>(addr: u64, base_addr: u64) -> usize {
 
 fn current_cpu_id() -> usize {
     cpu::per_cpu::get_per_cpu_info().shared.id as usize
+}
+
+pub fn init_frame_allocator(memory_regions: &mut MemoryRegions) {
+    let num_cpus = get_cpu_count();
+    let frame_allocator = LLFreeFrameAllocator::new(memory_regions, num_cpus).expect("Cannot init frame allocator LLFree");
+    *FRAME_ALLOCATOR.lock() = Some(frame_allocator);
+}
+pub fn with_frame_allocator<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut LLFreeFrameAllocator) -> R,
+{
+    let mut guard = FRAME_ALLOCATOR.lock();
+    let alloc = guard.as_mut().expect("Frame allocator not initialised");
+    f(alloc)
 }

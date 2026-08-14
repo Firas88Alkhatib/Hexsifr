@@ -26,6 +26,7 @@ static mut BSP_PER_CPU: MaybeUninit<PerCPU> = MaybeUninit::uninit();
 pub struct PerCPUShared {
     pub id: u32,
     pub lapic_id: u32,
+    pub is_bsp: bool,
 }
 
 #[derive(Debug)]
@@ -50,7 +51,7 @@ pub fn new_per_cpu() -> &'static mut PerCPU {
         unsafe {
             lapic.enable();
             let lapic_id = lapic.id();
-            let bsp_per_cpu = PerCPU { local: PerCPULocal { gdt, lapic }, shared: PerCPUShared { id: 0, lapic_id } };
+            let bsp_per_cpu = PerCPU { local: PerCPULocal { gdt, lapic }, shared: PerCPUShared { id: 0, is_bsp: true, lapic_id } };
             let ptr: &'static mut PerCPU = (*addr_of_mut!(BSP_PER_CPU)).write(bsp_per_cpu);
             set_gs_base(VirtAddr::from_ptr(ptr));
             return ptr;

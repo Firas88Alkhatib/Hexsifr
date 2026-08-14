@@ -1,10 +1,11 @@
 use crate::cpu;
+use crate::memory::frame_allocator::with_frame_allocator;
 use crate::memory::mapper::active_page_table_mapper;
 use crate::memory::physical_memory_offset;
 use buddy_slab_allocator::eii::{slab_pool_impl, virt_to_phys_impl};
 use buddy_slab_allocator::{GlobalAllocator, PerCpuSlab, SlabPoolTrait, StaticSlabPool};
 use x86_64::VirtAddr;
-use x86_64::structures::paging::{FrameAllocator, Mapper, Page, PageSize, PageTableFlags, Size4KiB};
+use x86_64::structures::paging::{FrameAllocator, Mapper, Page, PageSize, PageTableFlags, PhysFrame, Size4KiB};
 
 const HEAP_SIZE: usize = 64 * 1024 * 1024; // 64 MiB
 const HEAP_VIRT_START: u64 = 0xffff_8800_4000_0000;
@@ -32,27 +33,27 @@ fn slab_pool() -> &'static dyn SlabPoolTrait {
     &SLAB_POOL
 }
 
-pub(crate) fn init_heap(frame_allocator: &mut impl FrameAllocator<Size4KiB>) -> Result<(), &'static str> {
+pub(crate) fn init_heap() {
     let mut mapper = active_page_table_mapper();
     let start_virt = VirtAddr::new(HEAP_VIRT_START);
 
-    for i in 0..NUM_PAGES {
-        let phys_frame = frame_allocator.allocate_frame().ok_or("Failed to allocate physical frame for heap")?;
+    with_frame_allocator(|frame_allocator| {
+        for i in 0..NUM_PAGES {
+            let phys_frame: PhysFrame<Size4KiB> = frame_allocator.allocate_frame().expect("Failed to allocate physical frame for heap");
 
-        let page = Page::containing_address(start_virt + (i * PAGE_SIZE) as u64);
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::GLOBAL;
+            let page = Page::containing_address(start_virt + (i * PAGE_SIZE) as u64);
+            let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::GLOBAL;
 
-        unsafe {
-            mapper.map_to(page, phys_frame, flags, frame_allocator).map_err(|_| "Failed to map heap page")?.flush();
+            unsafe {
+                mapper.map_to(page, phys_frame, flags, frame_allocator).expect("Failed to map heap page").flush();
+            }
         }
-    }
+    });
 
     let heap_start = HEAP_VIRT_START as *mut u8;
     let heap_slice = unsafe { core::slice::from_raw_parts_mut(heap_start, HEAP_SIZE) };
 
     unsafe {
-        ALLOCATOR.init(heap_slice).map_err(|_| "Failed to init buddy allocator")?;
+        ALLOCATOR.init(heap_slice).expect("Failed to init buddy allocator");
     }
-
-    Ok(())
 }
