@@ -5,15 +5,15 @@ pub(crate) mod physical;
 
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
 use core::sync::atomic::{AtomicU64, Ordering};
-
-use crate::memory::{frame_allocator::init_frame_allocator, heap_allocator::init_heap};
+use frame_allocator::init_frame_allocator;
+use heap_allocator::{init_heap, slap_bool::init_slab_pool};
 
 static PHYSICAL_MEMORY_OFFSET: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn memory_init(memory_regions: &mut MemoryRegions) {
-    info!("Initializing frame allocator");
+    init_slab_pool(memory_regions);
+    init_heap(memory_regions);
     init_frame_allocator(memory_regions);
-    init_heap();
 }
 
 pub(crate) fn set_physical_memory_offset(offset: u64) {
