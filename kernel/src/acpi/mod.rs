@@ -31,6 +31,6 @@ pub fn get_cpu_count() -> usize {
         })
         .count()
 }
-fn is_lapic_enabled(flags: u32) -> bool {
+pub fn is_lapic_enabled(flags: u32) -> bool {
     (flags & 0x01) != 0
 }

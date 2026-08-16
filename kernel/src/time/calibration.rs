@@ -4,7 +4,7 @@ use x86_64::instructions::{interrupts::without_interrupts, port::Port};
 
 use crate::{
     acpi::hpet::HPET,
-    cpu::per_cpu::get_per_cpu_info,
+    cpu::per_cpu::get_cpu_info,
     time::{read_tsc_counter, tsc_freq},
 };
 
@@ -62,7 +62,7 @@ fn calibrate_tsc_with_pit() -> Option<u64> {
 
 pub fn calibrate_lapic_timer() -> Option<u64> {
     without_interrupts(|| {
-        let lapic = &mut get_per_cpu_info().local.lapic;
+        let lapic = &mut get_cpu_info().local.as_mut().expect("Failed to get lapic from current per cpu info").lapic;
         let tsc_freq = tsc_freq();
         let tsc_ticks = tsc_freq / 20; // 50 ms
 

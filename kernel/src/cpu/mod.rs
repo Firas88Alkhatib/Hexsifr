@@ -12,6 +12,6 @@ pub(crate) fn halt_loop() -> ! {
     }
 }
 pub fn cpu_init() {
-    per_cpu::new_per_cpu();
+    per_cpu::init_bsp_per_cpu();
     interrupts::enable();
 }

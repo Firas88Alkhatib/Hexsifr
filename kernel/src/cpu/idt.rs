@@ -6,12 +6,17 @@ use x86_64::{
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode},
 };
 
-use crate::cpu::{halt_loop, lapic::read_lapic_error_status_register, per_cpu::get_per_cpu_info};
+use crate::cpu::{halt_loop, lapic::read_lapic_error_status_register, per_cpu::get_cpu_info};
 
 static IDT: Once<InterruptDescriptorTable> = Once::new();
 
+#[inline]
+pub fn lapic_id() -> u32 {
+    core::arch::x86_64::__cpuid(1).ebx >> 24
+}
+
 pub fn eoi() {
-    unsafe { get_per_cpu_info().local.lapic.end_of_interrupt() };
+    unsafe { get_cpu_info().local.as_mut().expect("Failed to get lapic from current per cpu info").lapic.end_of_interrupt() };
 }
 
 pub fn get_idt() -> &'static InterruptDescriptorTable {
@@ -132,6 +137,7 @@ pub fn get_idt() -> &'static InterruptDescriptorTable {
 
 extern "x86-interrupt" fn divide_error_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: DIVIDE ERROR");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -139,6 +145,7 @@ extern "x86-interrupt" fn divide_error_handler(stack_frame: InterruptStackFrame)
 
 extern "x86-interrupt" fn debug_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: DEBUG");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -146,6 +153,7 @@ extern "x86-interrupt" fn debug_handler(stack_frame: InterruptStackFrame) {
 
 extern "x86-interrupt" fn nmi_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: NON-MASKABLE INTERRUPT");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -153,11 +161,13 @@ extern "x86-interrupt" fn nmi_handler(stack_frame: InterruptStackFrame) {
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: BREAKPOINT");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 }
 
 extern "x86-interrupt" fn overflow_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: OVERFLOW");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -165,6 +175,7 @@ extern "x86-interrupt" fn overflow_handler(stack_frame: InterruptStackFrame) {
 
 extern "x86-interrupt" fn bound_range_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: BOUND RANGE EXCEEDED");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -172,6 +183,7 @@ extern "x86-interrupt" fn bound_range_handler(stack_frame: InterruptStackFrame) 
 
 extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: INVALID OPCODE");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -179,13 +191,16 @@ extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStackFram
 
 extern "x86-interrupt" fn device_not_available_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: DEVICE NOT AVAILABLE (FPU/SIMD)");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
 }
 
-extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame, _error_code: u64) -> ! {
+extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) -> ! {
     error!("EXCEPTION: DOUBLE FAULT");
+    error!("LAPIC ID: {}", lapic_id());
+    error!("Error code: {:#x}", error_code);
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -193,6 +208,7 @@ extern "x86-interrupt" fn double_fault_handler(stack_frame: InterruptStackFrame,
 
 extern "x86-interrupt" fn invalid_tss_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("EXCEPTION: INVALID TSS");
+    error!("LAPIC ID: {}", lapic_id());
     error!("Error code: {:#x}", error_code);
     error!("{:#?}", stack_frame);
 
@@ -201,6 +217,7 @@ extern "x86-interrupt" fn invalid_tss_handler(stack_frame: InterruptStackFrame, 
 
 extern "x86-interrupt" fn segment_not_present_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("EXCEPTION: SEGMENT NOT PRESENT");
+    error!("LAPIC ID: {}", lapic_id());
     error!("Error code: {:#x}", error_code);
     error!("{:#?}", stack_frame);
 
@@ -209,6 +226,7 @@ extern "x86-interrupt" fn segment_not_present_handler(stack_frame: InterruptStac
 
 extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("EXCEPTION: STACK SEGMENT FAULT");
+    error!("LAPIC ID: {}", lapic_id());
     error!("Error code: {:#x}", error_code);
     error!("{:#?}", stack_frame);
 
@@ -217,6 +235,7 @@ extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: InterruptStac
 
 extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("EXCEPTION: GENERAL PROTECTION FAULT");
+    error!("LAPIC ID: {}", lapic_id());
     error!("Error Code: {:#x}", error_code);
     error!("{:#?}", stack_frame);
     halt_loop();
@@ -224,6 +243,7 @@ extern "x86-interrupt" fn general_protection_fault_handler(stack_frame: Interrup
 
 extern "x86-interrupt" fn page_fault_handler(stack_frame: InterruptStackFrame, error_code: PageFaultErrorCode) {
     error!("EXCEPTION: PAGE FAULT");
+    error!("LAPIC ID: {}", lapic_id());
     error!("Accessed Address: {:?}", Cr2::read());
     error!("Error Code: {:?}", error_code);
     error!("{:#?}", stack_frame);
@@ -233,6 +253,7 @@ extern "x86-interrupt" fn page_fault_handler(stack_frame: InterruptStackFrame, e
 
 extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: x87 FLOATING POINT ERROR");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -240,6 +261,7 @@ extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: InterruptStack
 
 extern "x86-interrupt" fn alignment_check_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("EXCEPTION: ALIGNMENT CHECK");
+    error!("LAPIC ID: {}", lapic_id());
     error!("Error code: {:#x}", error_code);
     error!("{:#?}", stack_frame);
 
@@ -248,6 +270,7 @@ extern "x86-interrupt" fn alignment_check_handler(stack_frame: InterruptStackFra
 
 extern "x86-interrupt" fn machine_check_handler(stack_frame: InterruptStackFrame) -> ! {
     error!("EXCEPTION: MACHINE CHECK (HARDWARE FAILURE)");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -255,6 +278,7 @@ extern "x86-interrupt" fn machine_check_handler(stack_frame: InterruptStackFrame
 
 extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: SIMD FLOATING POINT ERROR");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -262,6 +286,7 @@ extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: InterruptStac
 
 extern "x86-interrupt" fn virtualization_handler(stack_frame: InterruptStackFrame) {
     error!("EXCEPTION: VIRTUALIZATION");
+    error!("LAPIC ID: {}", lapic_id());
     error!("{:#?}", stack_frame);
 
     halt_loop();
@@ -269,6 +294,7 @@ extern "x86-interrupt" fn virtualization_handler(stack_frame: InterruptStackFram
 
 extern "x86-interrupt" fn security_exception_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     error!("EXCEPTION: SECURITY EXCEPTION");
+    error!("LAPIC ID: {}", lapic_id());
     error!("Error code: {:#x}", error_code);
     error!("{:#?}", stack_frame);
 
@@ -283,6 +309,7 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
 extern "x86-interrupt" fn apic_error_interrupt_handler(_stack_frame: InterruptStackFrame) {
     let esr = read_lapic_error_status_register();
     error!("APIC error: ESR = {:#x}", esr);
+    error!("LAPIC ID: {}", lapic_id());
     eoi();
 }
 

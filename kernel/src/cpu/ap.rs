@@ -1,14 +1,22 @@
+use alloc::boxed::Box;
 use ap_startup::{Context, platform::Platform, start_all_aps};
 use x86_64::{
     PhysAddr, VirtAddr, align_down, align_up,
+    instructions::interrupts,
     structures::paging::{Mapper, Page, PageSize, PageTableFlags, PhysFrame, Size4KiB},
 };
 
 use crate::{
     acpi::{acpi_handler::AcpiHandler, get_acpi},
-    cpu::per_cpu::get_per_cpu_info,
+    cpu::{
+        gdt::create_ap_gdt,
+        halt_loop,
+        idt::get_idt,
+        lapic::new_lapic,
+        per_cpu::{PerCPU, PerCPULocal, get_cpu_info, get_per_cpu_data_by_lapic_id, set_gs_base},
+    },
     memory::{frame_allocator::with_frame_allocator, mapper::active_page_table_mapper, phys_to_virt_mut},
-    time::sleep_us,
+    time::{calibration::calibrate_lapic_timer, sleep_us},
 };
 
 struct APStartupPlatform;
@@ -49,19 +57,40 @@ impl Platform for APStartupPlatform {
 
 pub fn start_ap_processors() {
     info!("Starting AP processors");
-    let context = Context { acpi_tables: get_acpi(), current_local_apic: &mut get_per_cpu_info().local.lapic };
+    let current_local_apic = &mut get_cpu_info().local.as_mut().expect("Per CPU local data is not set").lapic;
+    let context = Context { acpi_tables: get_acpi(), current_local_apic };
     start_all_aps::<APStartupPlatform, AcpiHandler>(ap_main, context).expect("failed to wake APs");
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn ap_main() -> ! {
-    // AP entry point.
-    // This function runs on each AP after it starts.
-    // You need to set up per‑CPU data, load GDT, enable interrupts, etc.
-    // info!("AP processor started up");
-    info!("Hello from AP");
-
-    loop {
-        x86_64::instructions::hlt();
+    let mut lapic = new_lapic();
+    unsafe {
+        lapic.enable();
+        lapic.enable_timer();
     }
+
+    let lapic_id = unsafe { lapic.id() };
+    let shared = get_per_cpu_data_by_lapic_id(lapic_id).expect("Cannot find PerCPU data for AP");
+    // set gs base temporarly for the GDT to be created
+    let per_cpu = PerCPU { shared: shared.clone(), local: None };
+
+    let raw_ptr = &per_cpu as *const _ as u64;
+    set_gs_base(VirtAddr::new(raw_ptr));
+    let gdt = create_ap_gdt();
+    gdt.load();
+    set_gs_base(VirtAddr::new(raw_ptr));
+
+    let local = Some(PerCPULocal { gdt, lapic });
+    let per_cpu = PerCPU { local, shared: shared.clone() };
+    let static_per_cpu = Box::leak(Box::new(per_cpu));
+    set_gs_base(VirtAddr::from_ptr(static_per_cpu));
+    get_idt().load();
+
+    calibrate_lapic_timer();
+    interrupts::enable();
+
+    let id = get_cpu_info().shared.id;
+    info!("Initialized AP: {}", id);
+    halt_loop()
 }

@@ -1,7 +1,5 @@
+use acpi_crate::{Handle, Handler, PciAddress, PhysicalMapping, aml::AmlError};
 use core::ptr::NonNull;
-
-use acpi_crate::{AcpiTables, Handle, Handler, PciAddress, PhysicalMapping, aml::AmlError};
-use spin::Once;
 use x86_64::{
     instructions::port::Port,
     structures::port::{PortRead, PortWrite},
@@ -16,15 +14,6 @@ const PCI_CONFIG_ADDRESS: u16 = 0xCF8;
 const PCI_CONFIG_DATA: u16 = 0xCFC;
 const PCI_CONFIG_ENABLE: u32 = 1 << 31;
 
-static ACPI_TABLES: Once<AcpiTables<AcpiHandler>> = Once::new();
-
-pub fn init_acpi_tables(rsdp_address: usize) {
-    ACPI_TABLES.call_once(|| unsafe { AcpiTables::from_rsdp(AcpiHandler, rsdp_address).expect("Failed to parse ACPI tables") });
-}
-
-pub fn get_acpi_tables() -> &'static AcpiTables<AcpiHandler> {
-    ACPI_TABLES.get().expect("Failed to get ACPI tables")
-}
 fn read_mem<T>(address: usize) -> T {
     unsafe { (address as *const T).read_volatile() }
 }

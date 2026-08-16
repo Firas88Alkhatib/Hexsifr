@@ -41,6 +41,7 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
     info!("System uptime: {:?}", time::uptime_duration());
     info!("System Date Time: {:?}", time::current_date_time());
 
+    cpu::per_cpu::init_per_cpu_data();
     cpu::ap::start_ap_processors();
 
     info!("Init completed, entering main loop");

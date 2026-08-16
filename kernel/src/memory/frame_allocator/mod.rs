@@ -88,7 +88,7 @@ impl LLFreeFrameAllocator<'_> {
         Ok(Self { inner: alloc, base_addr })
     }
 
-    pub fn allocate<PS: PageSizeOrder>(&self) -> Option<PhysFrame<PS>> {
+    fn allocate<PS: PageSizeOrder>(&self) -> Option<PhysFrame<PS>> {
         let request = Request { order: PS::ORDER, class: PS::CLASS, local: Some(current_cpu_id()) };
 
         let (frame, _) = self.inner.get(None, request).ok()?;
@@ -96,7 +96,7 @@ impl LLFreeFrameAllocator<'_> {
         Some(PhysFrame::containing_address(PhysAddr::new(phys)))
     }
 
-    pub fn deallocate<PS: PageSizeOrder>(&self, phys: PhysFrame<PS>) {
+    fn deallocate<PS: PageSizeOrder>(&self, phys: PhysFrame<PS>) {
         let frame_idx = frame_num::<PS>(phys.start_address().as_u64(), self.base_addr);
         let request = Request { order: PS::ORDER, class: PS::CLASS, local: Some(current_cpu_id()) };
         self.inner.put(FrameId(frame_idx), request).unwrap();
@@ -126,7 +126,7 @@ fn frame_num<PS: PageSize>(addr: u64, base_addr: u64) -> usize {
 }
 
 fn current_cpu_id() -> usize {
-    cpu::per_cpu::get_per_cpu_info().shared.id as usize
+    cpu::per_cpu::get_cpu_info().shared.id as usize
 }
 
 pub fn init_frame_allocator(memory_regions: &mut MemoryRegions) {
