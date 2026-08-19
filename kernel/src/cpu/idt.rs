@@ -7,6 +7,7 @@ use x86_64::{
 };
 
 use crate::cpu::{halt_loop, lapic::read_lapic_error_status_register, per_cpu::get_cpu_info};
+use crate::scheduler::on_timer_tick;
 
 static IDT: Once<InterruptDescriptorTable> = Once::new();
 
@@ -304,6 +305,7 @@ extern "x86-interrupt" fn security_exception_handler(stack_frame: InterruptStack
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
     // Acknowledge the interrupt first so the LAPIC can deliver the next one.
     eoi();
+    on_timer_tick();
 }
 
 extern "x86-interrupt" fn apic_error_interrupt_handler(_stack_frame: InterruptStackFrame) {

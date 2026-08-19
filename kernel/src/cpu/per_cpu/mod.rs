@@ -1,9 +1,13 @@
 use core::{mem::MaybeUninit, ptr::addr_of_mut};
 
+use crate::acpi::{get_acpi, is_lapic_enabled};
+use crate::cpu::gdt::{PerCpuGdt, get_bsp_per_cpu_gdt};
+use crate::cpu::{idt::get_idt, lapic::new_lapic};
+use crate::scheduler::PerCpuScheduler;
 use acpi_crate::sdt::madt::{Madt, MadtEntry};
 use alloc::vec::Vec;
 use raw_cpuid::CpuId;
-use spin::Once;
+use spin::{Mutex, Once};
 use x2apic::lapic::LocalApic;
 use x86_64::{
     VirtAddr,
@@ -11,15 +15,6 @@ use x86_64::{
         control::{Cr4, Cr4Flags},
         model_specific::GsBase,
         segmentation::{GS, Segment64},
-    },
-};
-
-use crate::{
-    acpi::{get_acpi, is_lapic_enabled},
-    cpu::{
-        gdt::{PerCpuGdt, get_bsp_per_cpu_gdt},
-        idt::get_idt,
-        lapic::new_lapic,
     },
 };
 
@@ -41,10 +36,10 @@ pub struct PerCPULocal {
     pub gdt: &'static PerCpuGdt,
     pub lapic: LocalApic,
 }
-#[derive(Debug)]
 pub struct PerCPU {
     pub local: Option<PerCPULocal>,
     pub shared: PerCPUShared,
+    pub scheduler: Mutex<PerCpuScheduler>,
 }
 
 pub fn init_per_cpu_data() {
@@ -104,7 +99,7 @@ pub fn init_bsp_per_cpu() -> &'static mut PerCPU {
         get_idt().load();
         let local = Some(PerCPULocal { gdt, lapic });
         let shared = PerCPUShared { id: 0, is_bsp, lapic_id };
-        let per_cpu = PerCPU { local, shared };
+        let per_cpu = PerCPU { local, shared, scheduler: Mutex::new(PerCpuScheduler::new()) };
         let ptr: &'static mut PerCPU = (*addr_of_mut!(BSP_PER_CPU)).write(per_cpu);
         set_gs_base(VirtAddr::from_ptr(ptr));
         return ptr;
