@@ -1,195 +1,189 @@
-//! A small per-CPU, priority-aware kernel-thread scheduler.
+use core::time::Duration;
 
-use alloc::{boxed::Box, collections::VecDeque};
-use x86_64::instructions::interrupts;
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, VecDeque},
+    vec::Vec,
+};
 
-mod context;
-mod task;
+pub mod context;
+pub mod task;
 
-use crate::cpu::{halt_loop, per_cpu::get_cpu_info};
-use crate::scheduler::task::{Task, TaskId, TaskState};
+use context::{TaskContext, switch_to};
 
-pub(crate) use context::Context;
-pub(crate) use task::Priority;
+use task::{Priority, Task, TaskId, WakeAt};
+use x86_64::instructions::interrupts::{self, without_interrupts};
 
-const KERNEL_STACK_SIZE: usize = 64 * 1024;
-const CONTEXT_SAVED_REGISTERS: usize = 6;
-const INITIAL_CONTEXT_WORDS: usize = CONTEXT_SAVED_REGISTERS + 2;
+use crate::{
+    cpu::{halt_loop, per_cpu::get_cpu_info},
+    time::current_time_ns,
+};
 
-struct ExitStack {
-    context: Context,
-    stack: Box<[u8]>,
+pub struct Scheduler {
+    pub run_queue: VecDeque<Box<Task>>,
+    pub current_task: Option<Box<Task>>,
+    pub sleep_queue: BTreeMap<WakeAt, Vec<Box<Task>>>,
+    pub next_task_id: usize,
+    pub idle_context: TaskContext,
+    pub exit_context: TaskContext,
+    started: bool,
 }
 
-#[derive(Default)]
-pub(crate) struct PerCpuScheduler {
-    run_queue: VecDeque<Box<Task>>,
-    current: Option<Box<Task>>,
-    next_task_id: usize,
-    boot_context: Context,
-    exit_stack: Option<ExitStack>,
-}
+/**
+ * Weighted round-robin scheduler.
+ *
+ * Higher-priority tasks receive longer time slices, giving them a larger
+ * share of CPU time while preserving round-robin fairness among runnable tasks.
+ * Scheduling is preemptive based on time-slice expiration.
+ */
+impl Scheduler {
+    pub fn new() -> Self {
+        let idle_context = TaskContext::new(idle_loop);
+        let exit_context = TaskContext::new(task_exit_trampoline);
+        Self {
+            next_task_id: 0,
+            run_queue: VecDeque::new(),
+            sleep_queue: BTreeMap::new(),
+            current_task: None,
+            idle_context,
+            exit_context,
+            started: false,
+        }
+    }
+    pub fn start(&mut self) {
+        self.started = true;
+    }
+    pub fn add_task(&mut self, entry: fn(), priority: Priority) {
+        without_interrupts(|| {
+            let id = TaskId(self.next_task_id);
+            self.next_task_id = self.next_task_id.checked_add(1).expect("task ID space exhausted");
 
-impl PerCpuScheduler {
-    pub(crate) fn new() -> Self {
-        Self::default()
+            let context = TaskContext::new(task_bootstrap);
+            let new_task = Task { id, entry, priority, remaining_ticks: priority.time_slice_ticks(), context, wake_at: None };
+            self.run_queue.push_back(Box::new(new_task));
+        })
+    }
+    pub fn sleep_current_task(&mut self, duration: Duration) {
+        without_interrupts(|| {
+            let mut current_task = self.current_task.take().expect("No current task to sleep");
+            let current_context = &raw mut current_task.context;
+
+            let wake_at = WakeAt(current_time_ns() + duration.as_nanos());
+            current_task.wake_at = Some(wake_at);
+
+            self.sleep_queue.entry(wake_at).or_default().push(current_task);
+
+            let next_context = self.take_next_task().unwrap_or(&raw mut self.idle_context);
+
+            unsafe { switch_to(current_context, next_context) }
+        });
     }
 
-    fn take_next_task(&mut self) -> Option<Box<Task>> {
-        let priority = self.run_queue.iter().map(|task| task.priority).max()?;
-        let index = self.run_queue.iter().position(|task| task.priority == priority).expect("ready task missing from run queue");
-        self.run_queue.remove(index)
+    fn wake_sleeping_tasks(&mut self) {
+        let now = current_time_ns();
+        while let Some(entry) = self.sleep_queue.first_entry() {
+            if entry.key().0 > now {
+                break;
+            }
+
+            let (_, tasks) = entry.remove_entry();
+
+            for mut task in tasks {
+                task.wake_at = None;
+                self.run_queue.push_back(task);
+            }
+        }
     }
-}
+    pub fn switch_to_exit_context(&mut self) {
+        interrupts::without_interrupts(|| {
+            let current_task = self.current_task.as_mut().expect("task finished without a current task");
+            let old_context = &raw mut current_task.context;
 
-/// Prepares the current CPU's scheduler after heap initialization.
-pub fn init() {
-    interrupts::without_interrupts(|| {
-        let mut scheduler = get_cpu_info().scheduler.lock();
-        assert!(scheduler.exit_stack.is_none(), "scheduler initialized twice");
+            self.exit_context.reset(task_exit_trampoline);
+            let exit_context = &raw mut self.exit_context;
 
-        let mut stack = Box::new([0_u8; KERNEL_STACK_SIZE]);
-        let context = initial_context(&mut *stack, task_exit_trampoline);
-        scheduler.exit_stack = Some(ExitStack { context, stack });
-    });
-}
+            unsafe { switch_to(old_context, exit_context) };
+        })
+    }
 
-/// Adds a task to the calling CPU's run queue.
-pub fn spawn(entry: fn(), priority: Priority) {
-    let mut stack = Box::new([0_u8; KERNEL_STACK_SIZE]);
-    let context = initial_context(&mut *stack, task_bootstrap);
+    fn take_next_task(&mut self) -> Option<*const TaskContext> {
+        let next_task = self.run_queue.pop_front()?;
 
-    interrupts::without_interrupts(|| {
-        let mut scheduler = get_cpu_info().scheduler.lock();
-        assert!(scheduler.current.is_none(), "spawning after scheduler start is not supported yet");
+        let next_context = &raw const next_task.context;
+        self.current_task = Some(next_task);
 
-        let id = TaskId(scheduler.next_task_id);
-        scheduler.next_task_id = scheduler.next_task_id.checked_add(1).expect("task ID space exhausted");
-        scheduler.run_queue.push_back(Box::new(Task {
-            id,
-            context,
-            _stack: stack,
-            entry,
-            priority,
-            remaining_ticks: priority.time_slice_ticks(),
-            state: TaskState::Ready,
-        }));
-    });
-}
+        Some(next_context)
+    }
 
-/// Starts the first task on the current CPU.
-pub fn start() -> ! {
-    interrupts::without_interrupts(|| {
-        let switch = {
-            // scheduler here is borrowed mutable , it needs to be in a scope
-            // in order to unlock it before we call context switch
-            let mut scheduler = get_cpu_info().scheduler.lock();
-            let mut next = scheduler.take_next_task().expect("scheduler started without tasks");
-            next.state = TaskState::Running;
-            next.remaining_ticks = next.priority.time_slice_ticks();
-            let next_context = &next.context as *const Context;
-            scheduler.current = Some(next);
-            (&mut scheduler.boot_context as *mut Context, next_context)
-        };
-
-        unsafe { context::switch_to(switch.0, switch.1) };
-        unreachable!("the boot context cannot be scheduled")
-    })
-}
-
-/// Called by the local APIC timer interrupt.
-pub fn on_timer_tick() {
-    let switch = {
-        // scheduler here is borrowed mutable , it needs to be in a scope
-        // in order to unlock it before we call context switch
-        let mut scheduler = get_cpu_info().scheduler.lock();
-        let current_id = match scheduler.current.as_ref() {
-            Some(task) => task.id,
-            None => return,
-        };
-        let old_context = {
-            let current = scheduler.current.as_mut().expect("current task disappeared");
-            if current.remaining_ticks > 1 {
-                current.remaining_ticks -= 1;
+    pub fn on_timer_tick(&mut self) {
+        without_interrupts(|| {
+            if !self.started {
                 return;
             }
-            current.state = TaskState::Ready;
-            &mut current.context as *mut Context
-        };
+            self.wake_sleeping_tasks();
 
-        let current = scheduler.current.take().expect("current task disappeared");
-        scheduler.run_queue.push_back(current);
-        let mut next = scheduler.take_next_task().expect("current task was not requeued");
-        next.state = TaskState::Running;
-        next.remaining_ticks = next.priority.time_slice_ticks();
+            if let Some(current_task) = &mut self.current_task {
+                if current_task.remaining_ticks > 0 {
+                    current_task.remaining_ticks -= 1;
+                    return;
+                }
 
-        if next.id == current_id {
-            scheduler.current = Some(next);
+                // current task expired, reset its timer
+                current_task.remaining_ticks = current_task.priority.time_slice_ticks();
+
+                // switch to next task
+                if let Some(mut next_task) = self.run_queue.pop_front() {
+                    let next_context = &raw mut next_task.context;
+
+                    let mut current_task = self
+                        .current_task
+                        .replace(next_task)
+                        .expect("Trying to replace current task with next task without having current task");
+
+                    let current_context = &raw mut current_task.context;
+
+                    self.run_queue.push_back(current_task);
+
+                    unsafe { switch_to(current_context, next_context) }
+                }
+                // no next task, continue the current one
+                return;
+            };
+
+            // no current task, meaning we are on idle loop
+            // check for new task to switch to
+            if let Some(next_context) = self.take_next_task() {
+                let current_context = &raw mut self.idle_context;
+                unsafe { switch_to(current_context, next_context) }
+            }
+
             return;
-        }
-
-        let next_context = &next.context as *const Context;
-        scheduler.current = Some(next);
-        (old_context, next_context)
-    };
-
-    unsafe { context::switch_to(switch.0, switch.1) };
+        });
+    }
 }
 
-extern "C" fn task_bootstrap() -> ! {
+extern "C" fn idle_loop() {
+    halt_loop()
+}
+
+extern "C" fn task_bootstrap() {
     let entry = {
-        let scheduler = get_cpu_info().scheduler.lock();
-        scheduler.current.as_ref().expect("task started without a current task").entry
+        let scheduler = &get_cpu_info().scheduler;
+        scheduler.current_task.as_ref().expect("task started without a current task").entry
     };
     interrupts::enable();
     entry();
-    finish_current_task()
+    get_cpu_info().scheduler.switch_to_exit_context()
 }
 
-fn finish_current_task() -> ! {
-    interrupts::without_interrupts(|| {
-        let switch = {
-            let mut scheduler = get_cpu_info().scheduler.lock();
-            let old_context = &mut scheduler.current.as_mut().expect("task finished without a current task").context as *mut Context;
+extern "C" fn task_exit_trampoline() {
+    let scheduler = &mut get_cpu_info().scheduler;
+    let current_task = scheduler.current_task.take().expect("scheduler exit without a current task");
+    drop(current_task);
 
-            let exit_stack = scheduler.exit_stack.as_mut().expect("scheduler is not initialized");
-            exit_stack.context = initial_context(&mut *exit_stack.stack, task_exit_trampoline);
+    let exit_context = &raw mut scheduler.exit_context;
 
-            let exit_context = &scheduler.exit_stack.as_ref().expect("scheduler is not initialized").context as *const Context;
-            (old_context, exit_context)
-        };
+    let next_context = scheduler.take_next_task().unwrap_or(&raw mut scheduler.idle_context);
 
-        unsafe { context::switch_to(switch.0, switch.1) };
-        unreachable!("a finished task was scheduled")
-    })
-}
-
-extern "C" fn task_exit_trampoline() -> ! {
-    let switch = {
-        let mut scheduler = get_cpu_info().scheduler.lock();
-        drop(scheduler.current.take().expect("scheduler exit without a current task"));
-
-        let mut next = scheduler.take_next_task().unwrap_or_else(|| halt_loop());
-        next.state = TaskState::Running;
-        next.remaining_ticks = next.priority.time_slice_ticks();
-        let next_context = &next.context as *const Context;
-        scheduler.current = Some(next);
-
-        let exit_context = &mut scheduler.exit_stack.as_mut().expect("scheduler is not initialized").context as *mut Context;
-        (exit_context, next_context)
-    };
-
-    unsafe { context::switch_to(switch.0, switch.1) };
-    unreachable!("scheduler exit stack was resumed")
-}
-
-fn initial_context(stack: &mut [u8], entry: extern "C" fn() -> !) -> Context {
-    let top = unsafe { stack.as_mut_ptr().add(stack.len()) } as usize & !0xF;
-    let pointer = top - INITIAL_CONTEXT_WORDS * size_of::<usize>();
-    unsafe {
-        let frame = pointer as *mut usize;
-        frame.write_bytes(0, CONTEXT_SAVED_REGISTERS);
-        frame.add(CONTEXT_SAVED_REGISTERS).write(entry as *const () as usize);
-    }
-    Context { stack_pointer: pointer as u64 }
+    unsafe { switch_to(exit_context, next_context) }
 }

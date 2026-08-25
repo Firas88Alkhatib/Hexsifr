@@ -9,7 +9,7 @@ use x86_64::{
 
 use crate::{
     acpi::get_cpu_count,
-    cpu,
+    cpu::per_cpu,
     memory::{MemoryRegionsExt, phys_to_virt, physical::reserve_memory},
 };
 
@@ -126,7 +126,7 @@ fn frame_num<PS: PageSize>(addr: u64, base_addr: u64) -> usize {
 }
 
 fn current_cpu_id() -> usize {
-    cpu::per_cpu::get_cpu_info().shared.id as usize
+    per_cpu::get_cpu_id()
 }
 
 pub fn init_frame_allocator(memory_regions: &mut MemoryRegions) {

@@ -1,6 +1,4 @@
-use alloc::boxed::Box;
-
-use crate::scheduler::Context;
+use super::context::TaskContext;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct TaskId(pub(crate) usize);
@@ -22,18 +20,14 @@ impl Priority {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TaskState {
-    Ready,
-    Running,
-}
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct WakeAt(pub u128);
 
 pub(crate) struct Task {
     pub(crate) id: TaskId,
-    pub(crate) context: Context,
-    pub(crate) _stack: Box<[u8]>,
+    pub(crate) context: TaskContext,
     pub(crate) entry: fn(),
     pub(crate) priority: Priority,
     pub(crate) remaining_ticks: u32,
-    pub(crate) state: TaskState,
+    pub wake_at: Option<WakeAt>,
 }

@@ -1,7 +1,6 @@
-use core::{alloc::Layout, ptr::addr_of};
-
 use alloc::{alloc::alloc_zeroed, boxed::Box};
-use spin::Once;
+use core::alloc::Layout;
+
 use x86_64::{
     VirtAddr,
     instructions::tables::load_tss,
@@ -30,16 +29,6 @@ pub struct IDTSegmentSelectors {
 
 const STACK_SIZE: usize = 4 * Size4KiB::SIZE as usize;
 
-struct InterruptStack(#[allow(dead_code)] [u8; STACK_SIZE]);
-static BSP_NMI_STACK: InterruptStack = InterruptStack([0; STACK_SIZE]);
-static BSP_DOUBLE_FAULT_STACK: InterruptStack = InterruptStack([0; STACK_SIZE]);
-static BSP_MACHINE_CHECK_STACK: InterruptStack = InterruptStack([0; STACK_SIZE]);
-
-static BSP_TSS: Once<TaskStateSegment> = Once::new();
-static BSP_SEGS: Once<IDTSegmentSelectors> = Once::new();
-static BSP_GDT: Once<GlobalDescriptorTable> = Once::new();
-
-static BSP_PER_CPU_GDT: Once<PerCpuGdt> = Once::new();
 #[repr(align(4096))]
 #[derive(Debug)]
 pub struct PerCpuGdt {
@@ -65,41 +54,7 @@ impl PerCpuGdt {
     }
 }
 
-fn get_bsp_tss() -> &'static TaskStateSegment {
-    BSP_TSS.call_once(|| {
-        let mut tss = TaskStateSegment::new();
-        tss.interrupt_stack_table[ist::NMI] = VirtAddr::from_ptr(addr_of!(BSP_NMI_STACK)) + STACK_SIZE as u64;
-        tss.interrupt_stack_table[ist::DOUBLE_FAULT] = VirtAddr::from_ptr(addr_of!(BSP_DOUBLE_FAULT_STACK)) + STACK_SIZE as u64;
-        tss.interrupt_stack_table[ist::MACHINE_CHECK] = VirtAddr::from_ptr(addr_of!(BSP_MACHINE_CHECK_STACK)) + STACK_SIZE as u64;
-        tss
-    })
-}
-fn get_bsp_gdt() -> (&'static GlobalDescriptorTable, &'static IDTSegmentSelectors) {
-    let gdt = BSP_GDT.call_once(|| {
-        let tss = get_bsp_tss();
-        let mut gdt = GlobalDescriptorTable::new();
-
-        let code_sel = gdt.append(Descriptor::kernel_code_segment());
-        let data_sel = gdt.append(Descriptor::kernel_data_segment());
-        let user_data_sel = gdt.append(Descriptor::user_data_segment());
-        let user_code_sel = gdt.append(Descriptor::user_code_segment());
-        let tss_sel = gdt.append(Descriptor::tss_segment(tss));
-
-        BSP_SEGS.call_once(|| IDTSegmentSelectors { code_sel, data_sel, user_data_sel, user_code_sel, tss_sel });
-        gdt
-    });
-    (gdt, BSP_SEGS.get().expect("Failed to get GDT Segment Selectors"))
-}
-
-pub fn get_bsp_per_cpu_gdt() -> &'static PerCpuGdt {
-    BSP_PER_CPU_GDT.call_once(|| {
-        let (gdt, selectors) = get_bsp_gdt();
-        let tss = get_bsp_tss();
-        PerCpuGdt { gdt, selectors, tss }
-    })
-}
-
-pub fn create_ap_gdt() -> &'static PerCpuGdt {
+pub fn create_gdt() -> &'static PerCpuGdt {
     let mut tss_box = Box::new(TaskStateSegment::new());
 
     let nmi_stack = allocate_interrupt_stack();

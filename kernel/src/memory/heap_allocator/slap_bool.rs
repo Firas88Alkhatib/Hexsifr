@@ -11,7 +11,7 @@ use x86_64::{
 
 use crate::{
     acpi::get_cpu_count,
-    cpu::per_cpu::get_cpu_info,
+    cpu::per_cpu::get_cpu_id,
     memory::{phys_to_virt, physical::reserve_memory},
 };
 
@@ -25,7 +25,7 @@ pub struct DynamicSlabPool<const PAGE_SIZE: usize> {
 unsafe impl<const PAGE_SIZE: usize> Sync for DynamicSlabPool<PAGE_SIZE> {}
 impl<const PAGE_SIZE: usize> SlabPoolTrait for DynamicSlabPool<PAGE_SIZE> {
     fn current_slab(&self) -> &dyn SlabTrait {
-        let cpu_id = get_cpu_info().shared.id as usize;
+        let cpu_id = get_cpu_id();
         &self.pools[cpu_id]
     }
 
