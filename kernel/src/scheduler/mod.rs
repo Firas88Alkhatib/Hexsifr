@@ -59,7 +59,8 @@ impl Scheduler {
             self.next_task_id = self.next_task_id.checked_add(1).expect("task ID space exhausted");
 
             let context = TaskContext::new(task_bootstrap);
-            let new_task = Task { id, entry, priority, remaining_ticks: priority.time_slice_ticks(), context, wake_at: None };
+            let new_task =
+                Task { id, entry, priority, remaining_ticks: priority.time_slice_ticks(), context, wake_at: None };
             self.run_queue.push_back(Box::new(new_task));
         })
     }

@@ -40,8 +40,10 @@ impl DateTime {
             + (self.second as u64);
 
         // --- Convert sub-second fields ---
-        let nanos =
-            seconds * NANOS_PER_SEC + (self.millis as u64) * NANOS_PER_MILLI + (self.micros as u64) * NANOS_PER_MICRO + (self.nanos as u64);
+        let nanos = seconds * NANOS_PER_SEC
+            + (self.millis as u64) * NANOS_PER_MILLI
+            + (self.micros as u64) * NANOS_PER_MICRO
+            + (self.nanos as u64);
 
         nanos
     }

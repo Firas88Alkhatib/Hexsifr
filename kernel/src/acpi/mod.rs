@@ -12,7 +12,9 @@ pub(crate) mod hpet;
 static ACPI_TABLES: Once<AcpiTables<AcpiHandler>> = Once::new();
 
 pub fn acpi_init(rsdp_address: usize) {
-    ACPI_TABLES.call_once(|| unsafe { AcpiTables::from_rsdp(AcpiHandler, rsdp_address).expect("Failed to parse ACPI tables") });
+    ACPI_TABLES.call_once(|| unsafe {
+        AcpiTables::from_rsdp(AcpiHandler, rsdp_address).expect("Failed to parse ACPI tables")
+    });
 }
 
 pub fn get_acpi() -> &'static AcpiTables<AcpiHandler> {

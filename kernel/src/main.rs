@@ -21,7 +21,6 @@ mod time;
 pub static BOOTLOADER_CONFIG: BootloaderConfig = {
     let mut config = BootloaderConfig::new_default();
     config.mappings.physical_memory = Some(Mapping::Dynamic);
-
     config
 };
 
@@ -30,7 +29,8 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
     drivers::serial::init();
     info!("Booting Hexsifr kernel...");
 
-    let physical_memory_offset = boot_info.physical_memory_offset.into_option().expect("Physical memory offset is not set");
+    let physical_memory_offset =
+        boot_info.physical_memory_offset.into_option().expect("Physical memory offset is not set");
     memory::set_physical_memory_offset(physical_memory_offset);
 
     let rsdp_addr = boot_info.rsdp_addr.into_option().expect("RSDP address is not set");
@@ -44,6 +44,8 @@ fn kernal_start(boot_info: &'static mut BootInfo) -> ! {
 
     info!("System uptime: {:?}", time::uptime_duration());
     info!("System Date Time: {:?}", time::current_date_time());
+
+    drivers::pci_init();
 
     info!("Starting AP processors");
     cpu::ap::start_ap_processors();

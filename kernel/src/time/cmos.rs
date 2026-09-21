@@ -48,8 +48,10 @@ pub fn read_rtc() -> DateTime {
         let month = read_value(REG_MONTH);
         let year_raw = read_value(REG_YEAR) as u16;
 
-        let century =
-            fadt_century_reg.map(|reg| read_value(reg) as u16).filter(|&c| c != 0).unwrap_or_else(|| if year_raw >= 90 { 19 } else { 20 });
+        let century = fadt_century_reg
+            .map(|reg| read_value(reg) as u16)
+            .filter(|&c| c != 0)
+            .unwrap_or_else(|| if year_raw >= 90 { 19 } else { 20 });
 
         let year = (century * 100) + year_raw as u16;
 

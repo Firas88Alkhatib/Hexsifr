@@ -22,7 +22,12 @@ pub(crate) mod per_cpu;
 static CPU_MAP: spin::Once<&'static mut [u32]> = spin::Once::new();
 
 pub fn get_cpu_id_by_lapic_id(lapic_id: u32) -> usize {
-    CPU_MAP.get().expect("CPU_MAP is not initialized").iter().position(|&i| i == lapic_id).expect("Cannot find cpu id by lapic id")
+    CPU_MAP
+        .get()
+        .expect("CPU_MAP is not initialized")
+        .iter()
+        .position(|&i| i == lapic_id)
+        .expect("Cannot find cpu id by lapic id")
 }
 pub fn init_cpu_map(memory_regions: &mut MemoryRegions) {
     let mut lapic = new_lapic();

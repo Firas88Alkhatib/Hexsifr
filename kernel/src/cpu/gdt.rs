@@ -62,8 +62,10 @@ pub fn create_gdt() -> &'static PerCpuGdt {
     let machine_check_stack = allocate_interrupt_stack();
 
     tss_box.interrupt_stack_table[ist::NMI] = VirtAddr::new(nmi_stack.as_ptr() as u64 + STACK_SIZE as u64);
-    tss_box.interrupt_stack_table[ist::DOUBLE_FAULT] = VirtAddr::new(double_fault_stack.as_ptr() as u64 + STACK_SIZE as u64);
-    tss_box.interrupt_stack_table[ist::MACHINE_CHECK] = VirtAddr::new(machine_check_stack.as_ptr() as u64 + STACK_SIZE as u64);
+    tss_box.interrupt_stack_table[ist::DOUBLE_FAULT] =
+        VirtAddr::new(double_fault_stack.as_ptr() as u64 + STACK_SIZE as u64);
+    tss_box.interrupt_stack_table[ist::MACHINE_CHECK] =
+        VirtAddr::new(machine_check_stack.as_ptr() as u64 + STACK_SIZE as u64);
 
     let tss = Box::leak(tss_box); // now `'static`
 
@@ -76,12 +78,14 @@ pub fn create_gdt() -> &'static PerCpuGdt {
 
     let gdt = Box::leak(gdt_box);
     // Leak the whole structure to make it static
-    let selectors = Box::leak(Box::new(IDTSegmentSelectors { code_sel, data_sel, user_data_sel, user_code_sel, tss_sel }));
+    let selectors =
+        Box::leak(Box::new(IDTSegmentSelectors { code_sel, data_sel, user_data_sel, user_code_sel, tss_sel }));
     Box::leak(Box::new(PerCpuGdt { gdt, tss, selectors }))
 }
 
 fn allocate_interrupt_stack() -> &'static [u8] {
-    let layout = Layout::from_size_align(STACK_SIZE, Size4KiB::SIZE as usize).expect("Failed to allocate interrupt stack");
+    let layout =
+        Layout::from_size_align(STACK_SIZE, Size4KiB::SIZE as usize).expect("Failed to allocate interrupt stack");
     let ptr = unsafe { alloc_zeroed(layout) };
     let ptr = core::ptr::NonNull::new(ptr).expect("Interrupt stack allocation verification failed");
     unsafe { core::slice::from_raw_parts(ptr.as_ptr(), STACK_SIZE) }

@@ -40,8 +40,11 @@ pub fn read_pci_config<T: PortRead>(bus: u8, device: u8, function: u8, offset: u
     // bits 15-11: device number
     // bits 10-8: function number
     // bits 7-2: register offset (aligned to 4 bytes)
-    let address: u32 =
-        PCI_CONFIG_ENABLE | ((bus as u32) << 16) | ((device as u32) << 11) | ((function as u32) << 8) | ((offset as u32) & 0xFC);
+    let address: u32 = PCI_CONFIG_ENABLE
+        | ((bus as u32) << 16)
+        | ((device as u32) << 11)
+        | ((function as u32) << 8)
+        | ((offset as u32) & 0xFC);
 
     unsafe {
         Port::<u32>::new(PCI_CONFIG_ADDRESS).write(address);
@@ -51,8 +54,11 @@ pub fn read_pci_config<T: PortRead>(bus: u8, device: u8, function: u8, offset: u
 
 pub fn write_pci_config<T: PortWrite>(bus: u8, device: u8, function: u8, offset: u8, value: T) {
     // Build the 32‑bit address (always a 32‑bit write).
-    let address: u32 =
-        PCI_CONFIG_ENABLE | ((bus as u32) << 16) | ((device as u32) << 11) | ((function as u32) << 8) | ((offset as u32) & 0xFC);
+    let address: u32 = PCI_CONFIG_ENABLE
+        | ((bus as u32) << 16)
+        | ((device as u32) << 11)
+        | ((function as u32) << 8)
+        | ((offset as u32) & 0xFC);
     unsafe {
         Port::<u32>::new(PCI_CONFIG_ADDRESS).write(address);
         Port::<T>::new(PCI_CONFIG_DATA).write(value);

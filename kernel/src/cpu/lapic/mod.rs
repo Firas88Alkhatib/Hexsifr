@@ -1,4 +1,8 @@
-use crate::{acpi::get_acpi, memory::phys_to_virt};
+use crate::{
+    acpi::get_acpi,
+    cpu::idt::{APIC_ERROR_VECTOR, SPURIOUS_VECTOR, TIMER_VECTOR},
+    memory::phys_to_virt,
+};
 
 use acpi_crate::sdt::madt::{Madt, MadtEntry};
 use core::ptr::read_volatile;
@@ -12,10 +16,6 @@ use x86_64::registers::model_specific::Msr;
 
 static LAPIC_VIRT_ADDR: Once<u64> = Once::new();
 static IS_X2APIC: Once<bool> = Once::new();
-
-pub const TIMER_VECTOR: u8 = 32;
-pub const APIC_ERROR_VECTOR: u8 = 33;
-pub const SPURIOUS_VECTOR: u8 = 255;
 
 fn get_lapic_virt() -> u64 {
     *LAPIC_VIRT_ADDR.call_once(|| {

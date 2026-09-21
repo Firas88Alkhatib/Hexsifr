@@ -7,9 +7,15 @@ use x86_64::{
 use super::{
     gdt::ist,
     halt_loop,
-    lapic::{self, read_lapic_error_status_register},
+    lapic::read_lapic_error_status_register,
     per_cpu::{get_cpu_id, get_cpu_info},
 };
+
+pub const TIMER_VECTOR: u8 = 32;
+pub const APIC_ERROR_VECTOR: u8 = 33;
+pub const XHCI_MSIX_VECTOR: u8 = 34;
+
+pub const SPURIOUS_VECTOR: u8 = 255;
 
 static IDT: Once<InterruptDescriptorTable> = Once::new();
 
@@ -124,11 +130,13 @@ pub fn get_idt() -> &'static InterruptDescriptorTable {
         // APIC / IRQs start at vector 32.
 
         // 32 Lapic timer
-        idt[lapic::TIMER_VECTOR].set_handler_fn(timer_interrupt_handler);
+        idt[TIMER_VECTOR].set_handler_fn(timer_interrupt_handler);
         // 33 APIC Error vector
-        idt[lapic::APIC_ERROR_VECTOR].set_handler_fn(apic_error_interrupt_handler);
+        idt[APIC_ERROR_VECTOR].set_handler_fn(apic_error_interrupt_handler);
+        // 34 XHCI
+        idt[XHCI_MSIX_VECTOR].set_handler_fn(xhci_msix_handler);
         // 255 sporious vector
-        idt[lapic::SPURIOUS_VECTOR].set_handler_fn(spurious_interrupt_handler);
+        idt[SPURIOUS_VECTOR].set_handler_fn(spurious_interrupt_handler);
         return idt;
     })
 }
@@ -320,4 +328,10 @@ extern "x86-interrupt" fn apic_error_interrupt_handler(_stack_frame: InterruptSt
 // interrupt happens while handling another interrupt.
 extern "x86-interrupt" fn spurious_interrupt_handler(_stack_frame: InterruptStackFrame) {
     info!("[lapic] spurious interrupt");
+}
+
+extern "x86-interrupt" fn xhci_msix_handler(_stack: InterruptStackFrame) {
+    // Process event ring events...
+    crate::drivers::usb::xhci::handle_interrupt();
+    eoi();
 }

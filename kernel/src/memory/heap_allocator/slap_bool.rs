@@ -40,7 +40,8 @@ pub fn init_slab_pool(memory_regions: &mut MemoryRegions) {
         let total_size = slab_size * cpu_count;
         let total_bytes = align_up(total_size as u64, PAGE_SIZE as u64);
 
-        let slab_phys = reserve_memory(memory_regions, total_bytes as usize).expect("Failed to reserve memory for slab pool");
+        let slab_phys =
+            reserve_memory(memory_regions, total_bytes as usize).expect("Failed to reserve memory for slab pool");
 
         let slab_virt = phys_to_virt::<PerCpuSlab<PAGE_SIZE>>(slab_phys) as *mut PerCpuSlab<PAGE_SIZE>;
         let slab_slice = unsafe { core::slice::from_raw_parts_mut(slab_virt, cpu_count) };

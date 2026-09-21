@@ -70,7 +70,8 @@ impl LLFreeFrameAllocator<'_> {
 
         let meta_data = alloc_meta_data(memory_regions, meta_sizes);
 
-        let alloc = LLFree::new(total_frames, Init::AllocAll, &classing, meta_data).expect("Failed to create new LLFree");
+        let alloc =
+            LLFree::new(total_frames, Init::AllocAll, &classing, meta_data).expect("Failed to create new LLFree");
 
         for region in memory_regions.usable_regions() {
             let start_aligned = align_up(region.start, Size4KiB::SIZE);
@@ -131,7 +132,8 @@ fn current_cpu_id() -> usize {
 
 pub fn init_frame_allocator(memory_regions: &mut MemoryRegions) {
     let num_cpus = get_cpu_count();
-    let frame_allocator = LLFreeFrameAllocator::new(memory_regions, num_cpus).expect("Cannot init frame allocator LLFree");
+    let frame_allocator =
+        LLFreeFrameAllocator::new(memory_regions, num_cpus).expect("Cannot init frame allocator LLFree");
     *FRAME_ALLOCATOR.lock() = Some(frame_allocator);
 }
 pub fn with_frame_allocator<F, R>(f: F) -> R

@@ -1,10 +1,14 @@
+use core::ops::Add;
+
 use bootloader_api::info::MemoryRegions;
 use x86_64::{
-    align_up,
-    structures::paging::{PageSize, Size4KiB},
+    PhysAddr, VirtAddr, align_up,
+    structures::paging::{FrameAllocator, PageSize, PhysFrame, Size4KiB},
 };
 
-use crate::memory::MemoryRegionsExt;
+use crate::memory::{
+    MemoryRegionsExt, frame_allocator::with_frame_allocator, phys_to_virt_mut, physical_memory_offset,
+};
 
 /// Reserves a contiguous memory range from the beginning of the first usable
 /// memory region that can satisfy the requested size.
@@ -45,4 +49,49 @@ pub fn reserve_memory(regions: &mut MemoryRegions, size: usize) -> Option<u64> {
     }
 
     None
+}
+
+// pub fn allocate_frame<T>() -> (*mut T, u64) {
+//     with_frame_allocator(|alloc| {
+//         let frame: PhysFrame<Size4KiB> = alloc.allocate_frame().expect("No frame for xHCI");
+
+//         let phys = frame.start_address().as_u64();
+//         let virt = phys_to_virt_mut::<T>(phys);
+
+//         unsafe { virt.write_bytes(0, Size4KiB::SIZE as usize) }
+
+//         (virt, phys)
+//     })
+// }
+
+#[derive(Debug, Clone, Copy)]
+pub struct PhysRegion {
+    pub phys: PhysAddr,
+    pub virt: VirtAddr,
+    pub size: usize,
+}
+impl PhysRegion {
+    pub fn fill_zero(&self) {
+        unsafe { self.virt.as_mut_ptr::<u8>().write_bytes(0, self.size) };
+    }
+    pub fn read_as<T>(&self) -> T {
+        unsafe { self.virt.as_mut_ptr::<T>().read_volatile() }
+    }
+    pub fn write_as<T>(&self, value: T) {
+        unsafe { self.virt.as_mut_ptr::<T>().write_volatile(value) }
+    }
+}
+
+pub fn allocate_frame() -> PhysRegion {
+    with_frame_allocator(|alloc| {
+        let frame: PhysFrame<Size4KiB> = alloc.allocate_frame().expect("No frame for xHCI");
+        const SIZE: usize = Size4KiB::SIZE as usize;
+        let phys = frame.start_address();
+        let virt = VirtAddr::new(phys.add(physical_memory_offset()).as_u64());
+
+        let phys_region = PhysRegion { phys, virt, size: SIZE };
+        phys_region.fill_zero();
+
+        phys_region
+    })
 }
